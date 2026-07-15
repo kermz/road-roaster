@@ -16,13 +16,6 @@ class ControllerApp {
   void loop();
 
  private:
-  struct PendingRequest {
-    bool active = false;
-    Packet packet{};
-    uint8_t attempts = 0;
-    uint32_t last_sent_ms = 0;
-  };
-
   static void displayRequested(void* context, uint16_t preset_id,
                                uint32_t duration_override_ms);
   static void clearRequested(void* context);
@@ -30,7 +23,7 @@ class ControllerApp {
                                   uint8_t brightness_percent);
   static uint32_t durationOverrideRequested(void* context,
                                             uint16_t preset_id);
-  static void durationOverrideSaved(void* context, uint16_t preset_id,
+  static bool durationOverrideSaved(void* context, uint16_t preset_id,
                                     uint32_t duration_override_ms);
   static void uiFeedbackRequested(void* context);
 
@@ -54,14 +47,16 @@ class ControllerApp {
   void serviceBrightness(uint32_t now_ms);
   void sendRearBrightness(uint32_t now_ms);
   void persistControllerBrightnessIfDue(uint32_t now_ms);
+  void serviceBattery(uint32_t now_ms);
+  bool ensurePreferences();
   uint32_t loadDurationOverride(uint16_t preset_id);
-  void saveDurationOverride(uint16_t preset_id,
+  bool saveDurationOverride(uint16_t preset_id,
                             uint32_t duration_override_ms);
 
   RadioTransport radio_;
   CatalogStore catalog_;
   ControllerUi ui_;
-  PendingRequest pending_{};
+  RequestCoordinator pending_{};
   RearState rear_state_{};
   bool have_rear_state_ = false;
   bool sync_in_progress_ = false;
@@ -70,11 +65,16 @@ class ControllerApp {
   uint32_t next_sync_attempt_ms_ = 0;
   bool unavailable_shown_ = false;
   Preferences preferences_;
+  bool preferences_ready_ = false;
   uint8_t controller_brightness_percent_ = 80;
   uint8_t desired_rear_brightness_percent_ = 35;
   bool rear_brightness_dirty_ = false;
   bool controller_brightness_save_pending_ = false;
   uint32_t controller_brightness_save_due_ms_ = 0;
+  uint32_t next_battery_sample_ms_ = 0;
+  uint8_t battery_percent_ = 0;
+  uint8_t battery_read_failures_ = 0;
+  bool have_battery_percent_ = false;
 };
 
 }  // namespace rr::controller

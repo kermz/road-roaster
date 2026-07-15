@@ -24,6 +24,7 @@ class RearApp {
   RearState currentState(uint32_t now_ms) const;
   void clearDisplay();
   void persistBrightnessIfDue(uint32_t now_ms);
+  bool ensurePreferences();
 
   RadioTransport radio_;
   MatrixRenderer renderer_;
@@ -34,6 +35,7 @@ class RearApp {
   uint32_t transmit_sequence_ = 1;
   ProcessedCommandWindow processed_{};
   Preferences preferences_;
+  bool preferences_ready_ = false;
   uint8_t brightness_percent_ = 35;
   bool brightness_save_pending_ = false;
   uint32_t brightness_save_due_ms_ = 0;

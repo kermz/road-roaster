@@ -27,6 +27,7 @@ memory. Check panel power and thermal behavior before using high brightness.
 - Synchronizes up to 64 rear-owned catalog entries in pages of four.
 - Starts the rear display blank after every reboot.
 - Uses four 2×2 LVGL touch zones and wraps pages with the rotary knob.
+- Shows a subtle, filtered controller battery estimate beneath the page count.
 - Sends a message by tapping it and opens its duration popup by long-pressing.
 - Saves a persistent per-message `Default` or 5–60 second duration preference;
   normal taps reuse the saved choice.
@@ -39,6 +40,8 @@ memory. Check panel power and thermal behavior before using high brightness.
   one-second rear heartbeats continue to correct the authoritative state.
 - Retries the same sequence number after 300 ms, up to three retries, so a
   dropped acknowledgement cannot restart the rear timer.
+- Includes the catalog revision in display commands, so a controller with a
+  stale label-to-ID mapping cannot activate a different rear message.
 - Disables radio actions after 3.5 seconds without a rear heartbeat.
 - Automatically reloads the catalog when its runtime revision hash changes.
 - Opens brightness settings by tapping **ROAD ROASTER**.
@@ -47,7 +50,8 @@ memory. Check panel power and thermal behavior before using high brightness.
 - Reports rear brightness over ESP-NOW and shows its slider disabled in gray
   while the rear unit is unavailable.
 - Persists controller brightness, rear brightness, and per-message duration
-  preferences in NVS memory.
+  preferences in NVS memory, retries failed brightness writes, and keeps the
+  duration dialog open with an error when a duration cannot be saved.
 - Uses one shared, round-screen-safe popup style for duration, brightness, and
   future dialogs. Popups open instantly without display animation.
 - Uses the onboard DRV2605 motor's strong-click effect for knob interactions,
@@ -80,6 +84,8 @@ or protocol version requires rebuilding both firmware images.
 
 The PlatformIO configuration pins pioarduino `55.03.37`, which supplies
 Arduino-ESP32 3.3.7. It also pins LVGL 8.4.0 and the HUB75 DMA library.
+The custom definitions in `boards/` describe the controller's 16 MB flash / 8
+MB PSRAM and the rear board's 32 MB flash / 16 MB PSRAM accurately.
 
 PlatformIO is installed in its own Python environment and may not add `pio` to
 the Windows PATH. These PowerShell commands work with the default installation:
@@ -128,8 +134,9 @@ Requirements:
 - IDs are non-zero `uint16_t` values and must be unique.
 - Controller labels are at most 31 UTF-8 bytes.
 - The catalog may contain at most 64 entries.
-- Matrix text stays on the rear and is not constrained by the radio label
-  limit, although long text is best paired with `AnimationKind::Marquee`.
+- Matrix text stays on the rear, may contain at most 512 bytes, and is not
+  constrained by the radio label limit. Long text is best paired with
+  `AnimationKind::Marquee`.
 - The controller does not need to be rebuilt after a rear catalog change.
 
 Duplicate IDs or invalid entries stop rear application startup and print a
@@ -143,9 +150,11 @@ fatal configuration error instead of advertising an ambiguous catalog.
   durations, acknowledged countdown, and LVGL UI
 - `lib/road_roaster_protocol/` — versioned wire format and catalog store
 - `lib/road_roaster_radio/` — encrypted ESP-NOW transport
-- `lib/knob_board/` — Waveshare LCD, CST816 touch, encoder, backlight, and
-  DRV2605 haptic BSP
-- `test/test_protocol/` — native packet, catalog boundary, and retry tests
+- `lib/knob_board/` — Waveshare LCD, CST816 touch, encoder, battery ADC,
+  backlight, and DRV2605 haptic BSP
+- `test/test_protocol/` — native packet, catalog boundary, retry, revision,
+  and request-coordination tests
+- `boards/` — hardware-accurate PlatformIO definitions for both ESP32-S3 boards
 
 The LCD and HUB75 pin maps and display initialization are adapted from
 Waveshare's examples. The rear configuration uses GPIO E 9, `SHIFTREG`, a

@@ -140,11 +140,14 @@ void test_every_command_and_manifest_packet_round_trips() {
   rr::Packet display;
   display.type = rr::PacketType::Display;
   display.sequence = 101;
+  display.catalog_revision = 0x12345678;
   display.preset_id = 37;
   display.duration_override_ms = 60000;
   length = rr::encodePacket(display, bytes.data(), bytes.size());
   decoded = rr::decodePacket(bytes.data(), length);
   TEST_ASSERT_TRUE(decoded);
+  TEST_ASSERT_EQUAL_UINT32(display.catalog_revision,
+                           decoded.packet.catalog_revision);
   TEST_ASSERT_EQUAL_UINT16(37, decoded.packet.preset_id);
   TEST_ASSERT_EQUAL_UINT32(60000, decoded.packet.duration_override_ms);
 
@@ -257,6 +260,7 @@ void test_retransmission_keeps_the_same_sequence_and_bytes() {
   rr::Packet command;
   command.type = rr::PacketType::Display;
   command.sequence = 0xCAFEBABE;
+  command.catalog_revision = 900;
   command.preset_id = 7;
   command.duration_override_ms = 5000;
   std::array<uint8_t, rr::kMaxEspNowPayload> first{};
@@ -300,6 +304,91 @@ void test_effective_duration_and_duplicate_command_window() {
                           static_cast<uint8_t>(result));
 }
 
+void test_request_timeout_and_catalog_sync_policy() {
+  TEST_ASSERT_TRUE(rr::canStartCatalogSync(false));
+  TEST_ASSERT_FALSE(rr::canStartCatalogSync(true));
+  TEST_ASSERT_TRUE(rr::matchesCatalogRevision(77, 77));
+  TEST_ASSERT_FALSE(rr::matchesCatalogRevision(76, 77));
+
+  using ManifestAction = rr::CatalogManifestAction;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(ManifestAction::AcceptExpected),
+      static_cast<uint8_t>(rr::catalogManifestAction(true, true, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(ManifestAction::BeginSync),
+      static_cast<uint8_t>(rr::catalogManifestAction(false, false, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(ManifestAction::Ignore),
+      static_cast<uint8_t>(rr::catalogManifestAction(false, false, true)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(ManifestAction::Ignore),
+      static_cast<uint8_t>(rr::catalogManifestAction(false, true, false)));
+
+  using Action = rr::RequestTimeoutAction;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Action::Wait),
+      static_cast<uint8_t>(
+          rr::requestTimeoutAction(false, 1000, 0, 300, 0, 4)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Action::Wait),
+      static_cast<uint8_t>(
+          rr::requestTimeoutAction(true, 1299, 1000, 300, 1, 4)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Action::Retry),
+      static_cast<uint8_t>(
+          rr::requestTimeoutAction(true, 1300, 1000, 300, 1, 4)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Action::Fail),
+      static_cast<uint8_t>(
+          rr::requestTimeoutAction(true, 2200, 1900, 300, 4, 4)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Action::Retry),
+      static_cast<uint8_t>(rr::requestTimeoutAction(
+          true, 0x00000020, 0xFFFFFF00, 0x120, 2, 4)));
+}
+
+void test_request_coordinator_scenarios() {
+  rr::RequestCoordinator coordinator;
+  rr::Packet display;
+  display.type = rr::PacketType::Display;
+  display.sequence = 500;
+  display.catalog_revision = 77;
+  display.preset_id = 4;
+  coordinator.begin(display, 1000);
+
+  rr::Packet boot_manifest;
+  boot_manifest.type = rr::PacketType::CatalogManifest;
+  boot_manifest.sequence = 900;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(rr::CatalogManifestAction::Ignore),
+      static_cast<uint8_t>(
+          coordinator.manifestAction(boot_manifest, false, true)));
+  TEST_ASSERT_TRUE(coordinator.active());
+  TEST_ASSERT_TRUE(coordinator.matches(500, rr::PacketType::Display));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(rr::RequestTimeoutAction::Retry),
+      static_cast<uint8_t>(coordinator.timeoutAction(1300, 300, 4)));
+  coordinator.markRetried(1300);
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(rr::RequestTimeoutAction::Wait),
+      static_cast<uint8_t>(coordinator.timeoutAction(1599, 300, 4)));
+  coordinator.clear();
+  TEST_ASSERT_FALSE(coordinator.active());
+
+  rr::Packet page_request;
+  page_request.type = rr::PacketType::CatalogPageRequest;
+  page_request.sequence = 501;
+  page_request.page_index = 3;
+  coordinator.begin(page_request, 2000);
+  rr::Packet page_response;
+  page_response.type = rr::PacketType::CatalogPage;
+  page_response.sequence = 501;
+  page_response.page_index = 3;
+  TEST_ASSERT_TRUE(coordinator.matchesCatalogPage(page_response));
+  page_response.page_index = 2;
+  TEST_ASSERT_FALSE(coordinator.matchesCatalogPage(page_response));
+}
+
 void test_brightness_validation() {
   TEST_ASSERT_TRUE(rr::isValidBrightness(5));
   TEST_ASSERT_TRUE(rr::isValidBrightness(35));
@@ -336,6 +425,8 @@ int main(int, char**) {
   RUN_TEST(test_retransmission_keeps_the_same_sequence_and_bytes);
   RUN_TEST(test_page_and_duration_choice_wrapping);
   RUN_TEST(test_effective_duration_and_duplicate_command_window);
+  RUN_TEST(test_request_timeout_and_catalog_sync_policy);
+  RUN_TEST(test_request_coordinator_scenarios);
   RUN_TEST(test_brightness_validation);
   return UNITY_END();
 }

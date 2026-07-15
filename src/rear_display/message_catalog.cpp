@@ -72,9 +72,19 @@ bool validateCatalog() {
   if (presetCount() == 0 || presetCount() > kMaxCatalogEntries) return false;
   for (size_t index = 0; index < presetCount(); ++index) {
     const auto& candidate = kPresets[index];
+    const size_t matrix_text_length = candidate.matrix_text == nullptr
+                                          ? 0
+                                          : std::strlen(candidate.matrix_text);
+    const bool known_animation =
+        candidate.animation == AnimationKind::Static ||
+        candidate.animation == AnimationKind::Pulse ||
+        candidate.animation == AnimationKind::Marquee ||
+        candidate.animation == AnimationKind::ColorCycle;
     if (candidate.id == 0 || candidate.label == nullptr ||
         candidate.matrix_text == nullptr ||
         std::strlen(candidate.label) > kMaxLabelBytes ||
+        matrix_text_length == 0 || matrix_text_length > kMaxMatrixTextBytes ||
+        !known_animation ||
         candidate.default_duration_ms == 0) {
       return false;
     }
@@ -112,4 +122,3 @@ CatalogEntrySummary summaryAt(size_t index) {
 }
 
 }  // namespace rr::rear
-

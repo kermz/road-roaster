@@ -7,7 +7,7 @@
 namespace rr {
 
 inline constexpr uint16_t kProtocolMagic = 0x5252;
-inline constexpr uint8_t kProtocolVersion = 2;
+inline constexpr uint8_t kProtocolVersion = 3;
 inline constexpr size_t kMaxEspNowPayload = 250;
 inline constexpr uint8_t kMessagesPerPage = 4;
 inline constexpr uint16_t kMaxCatalogEntries = 64;
@@ -85,6 +85,18 @@ enum class DecodeError : uint8_t {
   InvalidPayload,
 };
 
+enum class RequestTimeoutAction : uint8_t {
+  Wait = 0,
+  Retry,
+  Fail,
+};
+
+enum class CatalogManifestAction : uint8_t {
+  Ignore = 0,
+  BeginSync,
+  AcceptExpected,
+};
+
 struct DecodeResult {
   DecodeError error = DecodeError::None;
   Packet packet{};
@@ -112,6 +124,32 @@ class ProcessedCommandWindow {
   uint8_t cursor_ = 0;
 };
 
+// Owns the controller's single in-flight request. Keeping matching and retry
+// transitions here makes the radio state machine host-testable without Arduino
+// or LVGL dependencies.
+class RequestCoordinator {
+ public:
+  void begin(const Packet& packet, uint32_t now_ms);
+  void clear();
+  bool active() const { return active_; }
+  const Packet& packet() const { return packet_; }
+  bool matches(uint32_t sequence, PacketType type) const;
+  bool matchesManifest(const Packet& response) const;
+  bool matchesCatalogPage(const Packet& response) const;
+  CatalogManifestAction manifestAction(const Packet& response,
+                                       bool sync_in_progress,
+                                       bool command_pending) const;
+  RequestTimeoutAction timeoutAction(uint32_t now_ms, uint32_t timeout_ms,
+                                     uint8_t maximum_attempts) const;
+  void markRetried(uint32_t now_ms);
+
+ private:
+  bool active_ = false;
+  Packet packet_{};
+  uint8_t attempts_ = 0;
+  uint32_t last_sent_ms_ = 0;
+};
+
 size_t encodePacket(const Packet& packet, uint8_t* output, size_t capacity);
 DecodeResult decodePacket(const uint8_t* data, size_t length);
 uint8_t pageCountFor(uint16_t entry_count);
@@ -122,5 +160,16 @@ uint32_t effectiveDuration(uint32_t default_duration_ms,
                            uint32_t duration_override_ms);
 uint32_t remainingDuration(uint32_t now_ms, uint32_t started_ms,
                            uint32_t total_duration_ms);
+bool canStartCatalogSync(bool request_pending);
+CatalogManifestAction catalogManifestAction(bool expected,
+                                            bool sync_in_progress,
+                                            bool command_pending);
+bool matchesCatalogRevision(uint32_t request_revision,
+                            uint32_t current_revision);
+RequestTimeoutAction requestTimeoutAction(bool active, uint32_t now_ms,
+                                          uint32_t last_sent_ms,
+                                          uint32_t timeout_ms,
+                                          uint8_t attempts,
+                                          uint8_t maximum_attempts);
 
 }  // namespace rr

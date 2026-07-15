@@ -240,6 +240,15 @@ void ControllerUi::begin(DisplayCallback display_callback,
   lv_obj_set_style_text_letter_space(page_label_, 1, LV_PART_MAIN);
   lv_obj_align(page_label_, LV_ALIGN_BOTTOM_MID, -58, -45);
 
+  battery_label_ = lv_label_create(screen);
+  lv_label_set_text(battery_label_, "--%");
+  makeLabelPlain(battery_label_, &lv_font_montserrat_14, kMuted);
+  lv_obj_set_style_text_opa(battery_label_, LV_OPA_50, LV_PART_MAIN);
+  lv_obj_set_width(battery_label_, 64);
+  lv_obj_set_style_text_align(battery_label_, LV_TEXT_ALIGN_CENTER,
+                              LV_PART_MAIN);
+  lv_obj_align(battery_label_, LV_ALIGN_BOTTOM_MID, -58, -23);
+
   clear_button_ = lv_btn_create(screen);
   lv_obj_set_size(clear_button_, 82, 36);
   lv_obj_align(clear_button_, LV_ALIGN_BOTTOM_MID, 64, -39);
@@ -434,6 +443,19 @@ void ControllerUi::setBrightnessValues(uint8_t controller_percent,
   refreshBrightnessLabels();
 }
 
+void ControllerUi::setBatteryPercent(uint8_t percent, bool available) {
+  if (battery_label_ == nullptr) return;
+  char text[8];
+  if (available) {
+    std::snprintf(text, sizeof(text), "%u%%", std::min<uint8_t>(percent, 100));
+  } else {
+    std::snprintf(text, sizeof(text), "--%%");
+  }
+  if (std::strcmp(lv_label_get_text(battery_label_), text) != 0) {
+    lv_label_set_text(battery_label_, text);
+  }
+}
+
 void ControllerUi::tick(uint32_t now_ms) {
   if (view_state_ != ViewState::Active || !rear_state_.active) return;
   const uint32_t local_remaining_ms = remainingDuration(
@@ -482,6 +504,9 @@ void ControllerUi::showSyncing() { applyViewState(ViewState::Syncing); }
 void ControllerUi::showSetupRequired() {
   applyViewState(ViewState::SetupRequired);
 }
+void ControllerUi::showRadioFailure() {
+  applyViewState(ViewState::RadioFailure);
+}
 void ControllerUi::showRearUnavailable() {
   applyViewState(ViewState::Unavailable);
 }
@@ -498,7 +523,8 @@ void ControllerUi::showRearState(const RearState& state,
 
 void ControllerUi::applyViewState(ViewState state) {
   view_state_ = state;
-  if (state == ViewState::Unavailable || state == ViewState::SetupRequired) {
+  if (state == ViewState::Unavailable || state == ViewState::SetupRequired ||
+      state == ViewState::RadioFailure) {
     closeDurationPicker();
   }
   refreshStatus();
@@ -517,6 +543,10 @@ void ControllerUi::refreshStatus() {
       break;
     case ViewState::SetupRequired:
       status_text = "Radio setup required";
+      color = kRed;
+      break;
+    case ViewState::RadioFailure:
+      status_text = "Radio initialization failed";
       color = kRed;
       break;
     case ViewState::Unavailable:
@@ -665,6 +695,8 @@ void ControllerUi::openDurationPicker(uint8_t slot) {
                          : 0;
   duration_picker_open_ = true;
   lv_label_set_text(duration_message_, entry->label.data());
+  lv_obj_set_style_text_color(duration_message_, lv_color_hex(kWhite),
+                              LV_PART_MAIN);
   refreshDurationPicker();
   showModal(duration_overlay_, duration_card_);
   if (feedback_callback_ != nullptr) feedback_callback_(callback_context_);
@@ -733,8 +765,14 @@ void ControllerUi::confirmEvent(lv_event_t* event) {
   if (entry != nullptr && ui->duration_save_callback_ != nullptr) {
     const uint32_t duration =
         ui->duration_choice_ == 0 ? 0 : ui->duration_choice_ * 5000UL;
-    ui->duration_save_callback_(ui->callback_context_, entry->id, duration);
-    ui->closeDurationPicker();
+    if (ui->duration_save_callback_(ui->callback_context_, entry->id,
+                                    duration)) {
+      ui->closeDurationPicker();
+    } else {
+      lv_label_set_text(ui->duration_message_, "Save failed - retry");
+      lv_obj_set_style_text_color(ui->duration_message_, lv_color_hex(kRed),
+                                  LV_PART_MAIN);
+    }
   }
 }
 

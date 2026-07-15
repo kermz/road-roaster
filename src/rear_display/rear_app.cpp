@@ -10,6 +10,7 @@
 namespace rr::rear {
 namespace {
 constexpr uint32_t kBrightnessSaveDelayMs = 750;
+constexpr uint32_t kPreferenceRetryDelayMs = 5000;
 constexpr const char* kPreferencesNamespace = "road-roaster";
 constexpr const char* kBrightnessKey = "matrix-pct";
 }  // namespace
@@ -23,9 +24,15 @@ bool RearApp::begin() {
                 static_cast<unsigned>(presetCount()),
                 static_cast<unsigned long>(catalogRevision()));
 
-  preferences_.begin(kPreferencesNamespace, false);
-  brightness_percent_ = preferences_.getUChar(
-      kBrightnessKey, config::kDefaultBrightnessPercent);
+  preferences_ready_ = preferences_.begin(kPreferencesNamespace, false);
+  if (!preferences_ready_) {
+    Serial.println("WARNING: rear preferences are unavailable");
+  }
+  brightness_percent_ = preferences_ready_
+                            ? preferences_.getUChar(
+                                  kBrightnessKey,
+                                  config::kDefaultBrightnessPercent)
+                            : config::kDefaultBrightnessPercent;
   if (!isValidBrightness(brightness_percent_)) {
     brightness_percent_ = config::kDefaultBrightnessPercent;
   }
@@ -42,7 +49,11 @@ bool RearApp::begin() {
   radio_config.peer_mac = secrets::kControllerPeerMac;
   radio_config.primary_master_key = secrets::kPrimaryMasterKey;
   radio_config.local_master_key = secrets::kLocalMasterKey;
-  radio_.begin(radio_config);
+  const bool radio_started = radio_.begin(radio_config);
+  if (!radio_started && !radio_.diagnosticMode()) {
+    Serial.println("FATAL: rear radio initialization failed");
+    return false;
+  }
 
   transmit_sequence_ = esp_random();
   last_status_ms_ = millis() - 1000;
@@ -102,7 +113,9 @@ void RearApp::handlePacket(const Packet& packet, uint32_t now_ms) {
   AckResult result = AckResult::Applied;
   if (packet.type == PacketType::Display) {
     const auto* preset = findPreset(packet.preset_id);
-    if (preset == nullptr) {
+    if (!matchesCatalogRevision(packet.catalog_revision, catalogRevision())) {
+      result = AckResult::InvalidCatalogRevision;
+    } else if (preset == nullptr) {
       result = AckResult::InvalidPreset;
     } else if (!isValidDurationOverride(packet.duration_override_ms)) {
       result = AckResult::InvalidDuration;
@@ -198,8 +211,19 @@ void RearApp::persistBrightnessIfDue(uint32_t now_ms) {
       static_cast<int32_t>(now_ms - brightness_save_due_ms_) < 0) {
     return;
   }
-  preferences_.putUChar(kBrightnessKey, brightness_percent_);
+  if (!ensurePreferences() ||
+      preferences_.putUChar(kBrightnessKey, brightness_percent_) == 0) {
+    Serial.println("WARNING: failed to save rear brightness; retrying");
+    brightness_save_due_ms_ = now_ms + kPreferenceRetryDelayMs;
+    return;
+  }
   brightness_save_pending_ = false;
+}
+
+bool RearApp::ensurePreferences() {
+  if (preferences_ready_) return true;
+  preferences_ready_ = preferences_.begin(kPreferencesNamespace, false);
+  return preferences_ready_;
 }
 
 void RearApp::clearDisplay() {

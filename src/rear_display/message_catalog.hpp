@@ -7,6 +7,8 @@
 
 namespace rr::rear {
 
+inline constexpr size_t kMaxMatrixTextBytes = 512;
+
 enum class AnimationKind : uint8_t {
   Static = 0,
   Pulse = 1,
@@ -37,4 +39,3 @@ uint32_t catalogRevision();
 CatalogEntrySummary summaryAt(size_t index);
 
 }  // namespace rr::rear
-

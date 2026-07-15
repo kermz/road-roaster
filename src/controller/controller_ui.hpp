@@ -18,7 +18,7 @@ class ControllerUi {
                                       uint8_t brightness_percent);
   using DurationLookupCallback = uint32_t (*)(void* context,
                                               uint16_t preset_id);
-  using DurationSaveCallback = void (*)(void* context, uint16_t preset_id,
+  using DurationSaveCallback = bool (*)(void* context, uint16_t preset_id,
                                         uint32_t duration_override_ms);
   using FeedbackCallback = void (*)(void* context);
 
@@ -31,11 +31,13 @@ class ControllerUi {
   void setCatalog(const CatalogStore* catalog);
   void setBrightnessValues(uint8_t controller_percent, uint8_t rear_percent,
                            bool rear_available);
+  void setBatteryPercent(uint8_t percent, bool available = true);
   void tick(uint32_t now_ms);
   void rotate(int delta);
 
   void showSyncing();
   void showSetupRequired();
+  void showRadioFailure();
   void showRearUnavailable();
   void showSending();
   void showCommandFailed();
@@ -50,6 +52,7 @@ class ControllerUi {
   enum class ViewState : uint8_t {
     Syncing,
     SetupRequired,
+    RadioFailure,
     Unavailable,
     Sending,
     Failed,
@@ -109,6 +112,7 @@ class ControllerUi {
   std::array<lv_obj_t*, kMessagesPerPage> slot_index_labels_{};
   std::array<SlotContext, kMessagesPerPage> slot_contexts_{};
   lv_obj_t* page_label_ = nullptr;
+  lv_obj_t* battery_label_ = nullptr;
   lv_obj_t* clear_button_ = nullptr;
   lv_obj_t* duration_overlay_ = nullptr;
   lv_obj_t* duration_card_ = nullptr;

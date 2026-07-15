@@ -10,6 +10,9 @@
 #include "driver/i2c.h"
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -35,6 +38,7 @@ constexpr uint8_t kTouchAddress = 0x15;
 constexpr uint8_t kHapticAddress = 0x5A;
 constexpr int kEncoderA = 8;
 constexpr int kEncoderB = 7;
+constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_0;  // GPIO 1.
 constexpr int kLvglBufferRows = 36;
 
 esp_lcd_panel_handle_t panel = nullptr;
@@ -43,6 +47,8 @@ lv_disp_drv_t display_driver{};
 lv_indev_drv_t touch_driver{};
 esp_timer_handle_t tick_timer = nullptr;
 esp_timer_handle_t encoder_timer = nullptr;
+adc_oneshot_unit_handle_t battery_adc = nullptr;
+adc_cali_handle_t battery_adc_calibration = nullptr;
 std::atomic<int> encoder_delta{0};
 std::atomic<uint16_t> pending_flushes{0};
 std::atomic<bool> complete_frame_submitted{false};
@@ -214,6 +220,62 @@ bool beginBacklight() {
          ledc_channel_config(&channel) == ESP_OK;
 }
 
+bool beginBatteryMonitor() {
+  adc_oneshot_unit_init_cfg_t unit_config{};
+  unit_config.unit_id = ADC_UNIT_1;
+  if (adc_oneshot_new_unit(&unit_config, &battery_adc) != ESP_OK) {
+    battery_adc = nullptr;
+    return false;
+  }
+
+  adc_oneshot_chan_cfg_t channel_config{};
+  channel_config.atten = ADC_ATTEN_DB_12;
+  channel_config.bitwidth = ADC_BITWIDTH_12;
+  if (adc_oneshot_config_channel(battery_adc, kBatteryAdcChannel,
+                                 &channel_config) != ESP_OK) {
+    return false;
+  }
+
+  adc_cali_curve_fitting_config_t calibration_config{};
+  calibration_config.unit_id = ADC_UNIT_1;
+  calibration_config.chan = kBatteryAdcChannel;
+  calibration_config.atten = ADC_ATTEN_DB_12;
+  calibration_config.bitwidth = ADC_BITWIDTH_12;
+  if (adc_cali_create_scheme_curve_fitting(
+          &calibration_config, &battery_adc_calibration) != ESP_OK) {
+    battery_adc_calibration = nullptr;
+    return false;
+  }
+  return true;
+}
+
+uint8_t batteryPercentFromMillivolts(uint32_t millivolts) {
+  struct CurvePoint {
+    uint16_t millivolts;
+    uint8_t percent;
+  };
+  // A deliberately damped single-cell Li-ion discharge curve. This is an
+  // estimate; voltage-based gauges cannot account precisely for load or age.
+  constexpr CurvePoint kCurve[] = {
+      {3300, 0},  {3500, 7},  {3600, 15}, {3700, 30}, {3800, 50},
+      {3900, 65}, {4000, 80}, {4100, 90}, {4200, 100},
+  };
+  constexpr size_t kCurveSize = sizeof(kCurve) / sizeof(kCurve[0]);
+  if (millivolts <= kCurve[0].millivolts) return 0;
+  if (millivolts >= kCurve[kCurveSize - 1].millivolts) return 100;
+  for (size_t index = 1; index < kCurveSize; ++index) {
+    if (millivolts <= kCurve[index].millivolts) {
+      const auto& low = kCurve[index - 1];
+      const auto& high = kCurve[index];
+      return low.percent +
+             (millivolts - low.millivolts) *
+                 (high.percent - low.percent) /
+                 (high.millivolts - low.millivolts);
+    }
+  }
+  return 100;
+}
+
 bool beginDisplay() {
   const spi_bus_config_t bus_config = KNOB_LCD_PANEL_BUS_QSPI_CONFIG(
       kLcdClock, kLcdData0, kLcdData1, kLcdData2, kLcdData3,
@@ -292,6 +354,7 @@ bool begin() {
     return false;
   }
   haptic_ready = beginHaptics();
+  beginBatteryMonitor();
   backlight_enabled = false;
   first_frame_ready.store(false, std::memory_order_relaxed);
   return true;
@@ -327,6 +390,26 @@ void setBacklight(uint8_t percent) {
   const uint32_t duty = requested_backlight_percent * 255U / 100U;
   ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+}
+
+bool readBatteryPercent(uint8_t& percent) {
+  if (battery_adc == nullptr || battery_adc_calibration == nullptr) {
+    return false;
+  }
+  constexpr uint8_t kSampleCount = 16;
+  uint32_t total_millivolts = 0;
+  for (uint8_t sample = 0; sample < kSampleCount; ++sample) {
+    int raw = 0;
+    int pin_millivolts = 0;
+    if (adc_oneshot_read(battery_adc, kBatteryAdcChannel, &raw) != ESP_OK ||
+        adc_cali_raw_to_voltage(battery_adc_calibration, raw,
+                                &pin_millivolts) != ESP_OK) {
+      return false;
+    }
+    total_millivolts += static_cast<uint32_t>(pin_millivolts) * 2U;
+  }
+  percent = batteryPercentFromMillivolts(total_millivolts / kSampleCount);
+  return true;
 }
 
 void vibrate() {

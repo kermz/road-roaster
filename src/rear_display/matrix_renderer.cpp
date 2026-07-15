@@ -112,11 +112,12 @@ void MatrixRenderer::renderFrame(uint32_t now_ms) {
       uint16_t height = 0;
       display_->getTextBounds(preset_->matrix_text, 0, 0, &x1, &y1, &width,
                               &height);
-      const int16_t travel = static_cast<int16_t>(width + kPanelWidth);
-      const int16_t x = static_cast<int16_t>(kPanelWidth) -
-                        static_cast<int16_t>((elapsed / 35) % travel);
+      const uint32_t travel = static_cast<uint32_t>(width) + kPanelWidth;
+      const uint32_t phase = (elapsed / 35U) % travel;
+      const int32_t x = static_cast<int32_t>(kPanelWidth) -
+                        static_cast<int32_t>(phase);
       const int16_t y = (static_cast<int16_t>(kPanelHeight) - height) / 2;
-      display_->setCursor(x, y);
+      display_->setCursor(static_cast<int16_t>(x), y);
       display_->setTextColor(color);
       display_->print(preset_->matrix_text);
       break;

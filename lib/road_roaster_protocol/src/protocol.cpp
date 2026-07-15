@@ -125,7 +125,8 @@ bool writePayload(Writer& writer, const Packet& packet) {
       return true;
     }
     case PacketType::Display:
-      return writer.u16(packet.preset_id) &&
+      return writer.u32(packet.catalog_revision) &&
+             writer.u16(packet.preset_id) &&
              writer.u32(packet.duration_override_ms);
     case PacketType::SetBrightness:
       return writer.u8(packet.brightness_percent);
@@ -172,7 +173,8 @@ bool readPayload(Reader& reader, Packet& packet) {
       return true;
     }
     case PacketType::Display:
-      return reader.u16(packet.preset_id) &&
+      return reader.u32(packet.catalog_revision) &&
+             reader.u16(packet.preset_id) &&
              reader.u32(packet.duration_override_ms);
     case PacketType::SetBrightness:
       return reader.u8(packet.brightness_percent);
@@ -283,6 +285,50 @@ void ProcessedCommandWindow::remember(uint32_t sequence, PacketType type,
   cursor_ = (cursor_ + 1) % entries_.size();
 }
 
+void RequestCoordinator::begin(const Packet& packet, uint32_t now_ms) {
+  active_ = true;
+  packet_ = packet;
+  attempts_ = 1;
+  last_sent_ms_ = now_ms;
+}
+
+void RequestCoordinator::clear() { active_ = false; }
+
+bool RequestCoordinator::matches(uint32_t sequence, PacketType type) const {
+  return active_ && packet_.sequence == sequence && packet_.type == type;
+}
+
+bool RequestCoordinator::matchesManifest(const Packet& response) const {
+  return response.type == PacketType::CatalogManifest &&
+         matches(response.sequence, PacketType::CatalogRequest);
+}
+
+bool RequestCoordinator::matchesCatalogPage(const Packet& response) const {
+  return response.type == PacketType::CatalogPage &&
+         matches(response.sequence, PacketType::CatalogPageRequest) &&
+         packet_.page_index == response.page_index;
+}
+
+CatalogManifestAction RequestCoordinator::manifestAction(
+    const Packet& response, bool sync_in_progress,
+    bool command_pending) const {
+  return catalogManifestAction(matchesManifest(response), sync_in_progress,
+                               command_pending);
+}
+
+RequestTimeoutAction RequestCoordinator::timeoutAction(
+    uint32_t now_ms, uint32_t timeout_ms,
+    uint8_t maximum_attempts) const {
+  return requestTimeoutAction(active_, now_ms, last_sent_ms_, timeout_ms,
+                              attempts_, maximum_attempts);
+}
+
+void RequestCoordinator::markRetried(uint32_t now_ms) {
+  if (!active_) return;
+  ++attempts_;
+  last_sent_ms_ = now_ms;
+}
+
 uint8_t pageCountFor(uint16_t entry_count) {
   if (entry_count == 0) return 0;
   return static_cast<uint8_t>((entry_count + kMessagesPerPage - 1) /
@@ -320,6 +366,35 @@ uint32_t remainingDuration(uint32_t now_ms, uint32_t started_ms,
                            uint32_t total_duration_ms) {
   const uint32_t elapsed = now_ms - started_ms;
   return elapsed >= total_duration_ms ? 0 : total_duration_ms - elapsed;
+}
+
+bool canStartCatalogSync(bool request_pending) { return !request_pending; }
+
+CatalogManifestAction catalogManifestAction(bool expected,
+                                            bool sync_in_progress,
+                                            bool command_pending) {
+  if (expected) return CatalogManifestAction::AcceptExpected;
+  if (command_pending || sync_in_progress) {
+    return CatalogManifestAction::Ignore;
+  }
+  return CatalogManifestAction::BeginSync;
+}
+
+bool matchesCatalogRevision(uint32_t request_revision,
+                            uint32_t current_revision) {
+  return request_revision == current_revision;
+}
+
+RequestTimeoutAction requestTimeoutAction(bool active, uint32_t now_ms,
+                                          uint32_t last_sent_ms,
+                                          uint32_t timeout_ms,
+                                          uint8_t attempts,
+                                          uint8_t maximum_attempts) {
+  if (!active || now_ms - last_sent_ms < timeout_ms) {
+    return RequestTimeoutAction::Wait;
+  }
+  return attempts < maximum_attempts ? RequestTimeoutAction::Retry
+                                     : RequestTimeoutAction::Fail;
 }
 
 }  // namespace rr
