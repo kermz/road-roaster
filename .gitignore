@@ -1,0 +1,6 @@
+.pio/
+.pio-venv/
+.vscode/
+include/secrets.h
+*.log
+

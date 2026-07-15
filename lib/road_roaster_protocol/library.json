@@ -1,0 +1,8 @@
+{
+  "name": "road_roaster_protocol",
+  "version": "0.1.0",
+  "build": {
+    "includeDir": "include"
+  }
+}
+

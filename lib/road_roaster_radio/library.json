@@ -1,0 +1,11 @@
+{
+  "name": "road_roaster_radio",
+  "version": "0.1.0",
+  "dependencies": {
+    "road_roaster_protocol": "*"
+  },
+  "build": {
+    "includeDir": "include"
+  }
+}
+

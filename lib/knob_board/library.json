@@ -1,0 +1,11 @@
+{
+  "name": "knob_board",
+  "version": "0.1.0",
+  "dependencies": {
+    "lvgl": "8.4.0"
+  },
+  "build": {
+    "includeDir": "include"
+  }
+}
+
