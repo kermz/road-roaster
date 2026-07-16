@@ -16,6 +16,8 @@ class ControllerUi {
   using ClearCallback = void (*)(void* context);
   using BrightnessCallback = void (*)(void* context, bool rear_display,
                                       uint8_t brightness_percent);
+  using FlipCallback = void (*)(void* context, bool rear_display,
+                                bool flipped);
   using DurationLookupCallback = uint32_t (*)(void* context,
                                               uint16_t preset_id);
   using DurationSaveCallback = bool (*)(void* context, uint16_t preset_id,
@@ -24,13 +26,15 @@ class ControllerUi {
 
   void begin(DisplayCallback display_callback, ClearCallback clear_callback,
              BrightnessCallback brightness_callback,
+             FlipCallback flip_callback,
              DurationLookupCallback duration_lookup_callback,
              DurationSaveCallback duration_save_callback,
              FeedbackCallback feedback_callback,
              void* callback_context);
   void setCatalog(const CatalogStore* catalog);
-  void setBrightnessValues(uint8_t controller_percent, uint8_t rear_percent,
-                           bool rear_available);
+  void setDisplaySettings(uint8_t controller_percent, uint8_t rear_percent,
+                          bool controller_flipped, bool rear_flipped,
+                          bool rear_available);
   void setBatteryPercent(uint8_t percent, bool available = true);
   void tick(uint32_t now_ms);
   void rotate(int delta);
@@ -67,6 +71,7 @@ class ControllerUi {
   static void settingsEvent(lv_event_t* event);
   static void settingsBackEvent(lv_event_t* event);
   static void brightnessSliderEvent(lv_event_t* event);
+  static void flipSwitchEvent(lv_event_t* event);
   static void pageAnimation(void* object, int32_t x);
 
   void renderPage(int direction = 0);
@@ -85,6 +90,7 @@ class ControllerUi {
   DisplayCallback display_callback_ = nullptr;
   ClearCallback clear_callback_ = nullptr;
   BrightnessCallback brightness_callback_ = nullptr;
+  FlipCallback flip_callback_ = nullptr;
   DurationLookupCallback duration_lookup_callback_ = nullptr;
   DurationSaveCallback duration_save_callback_ = nullptr;
   FeedbackCallback feedback_callback_ = nullptr;
@@ -97,6 +103,7 @@ class ControllerUi {
   bool settings_open_ = false;
   uint8_t settings_focus_ = 0;
   bool slider_update_guard_ = false;
+  bool flip_update_guard_ = false;
   uint8_t duration_slot_ = 0;
   uint8_t duration_choice_ = 0;
   uint32_t status_color_ = 0xFFFFFFFF;
@@ -124,6 +131,7 @@ class ControllerUi {
   std::array<lv_obj_t*, 2> brightness_name_labels_{};
   std::array<lv_obj_t*, 2> brightness_sliders_{};
   std::array<lv_obj_t*, 2> brightness_values_{};
+  std::array<lv_obj_t*, 2> flip_switches_{};
 };
 
 }  // namespace rr::controller

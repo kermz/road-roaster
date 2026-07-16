@@ -217,11 +217,14 @@ static esp_err_t panel_invert_color(esp_lcd_panel_t* panel, bool invert) {
 static esp_err_t panel_mirror(esp_lcd_panel_t* panel, bool mirror_x,
                               bool mirror_y) {
   knob_panel_t* driver = __containerof(panel, knob_panel_t, base);
-  if (mirror_y) return ESP_ERR_NOT_SUPPORTED;
   if (mirror_x)
     driver->madctl_val |= BIT(6);
   else
     driver->madctl_val &= ~BIT(6);
+  if (mirror_y)
+    driver->madctl_val |= BIT(7);
+  else
+    driver->madctl_val &= ~BIT(7);
   return tx_param(driver, LCD_CMD_MADCTL, &driver->madctl_val, 1);
 }
 

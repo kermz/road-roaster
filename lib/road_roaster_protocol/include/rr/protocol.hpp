@@ -7,7 +7,7 @@
 namespace rr {
 
 inline constexpr uint16_t kProtocolMagic = 0x5252;
-inline constexpr uint8_t kProtocolVersion = 3;
+inline constexpr uint8_t kProtocolVersion = 4;
 inline constexpr size_t kMaxEspNowPayload = 250;
 inline constexpr uint8_t kMessagesPerPage = 4;
 inline constexpr uint16_t kMaxCatalogEntries = 64;
@@ -31,6 +31,7 @@ enum class PacketType : uint8_t {
   Ack = 8,
   Status = 9,
   SetBrightness = 10,
+  SetFlip = 11,
 };
 
 enum class AckResult : uint8_t {
@@ -55,6 +56,7 @@ struct RearState {
   uint32_t total_duration_ms = 0;
   uint32_t remaining_ms = 0;
   uint8_t brightness_percent = 0;
+  bool flipped = false;
 };
 
 struct Packet {
@@ -69,6 +71,7 @@ struct Packet {
   uint16_t preset_id = 0;
   uint32_t duration_override_ms = 0;
   uint8_t brightness_percent = 0;
+  bool flipped = false;
   AckResult ack_result = AckResult::MalformedRequest;
   PacketType acknowledged_type = PacketType::GetStatus;
   RearState state{};

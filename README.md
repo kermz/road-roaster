@@ -45,14 +45,17 @@ panel power and thermal behavior before using high brightness.
   stale label-to-ID mapping cannot activate a different rear message.
 - Disables radio actions after 3.5 seconds without a rear heartbeat.
 - Automatically reloads the catalog when its runtime revision hash changes.
-- Opens brightness settings by tapping **ROAD ROASTER**.
+- Opens display settings by tapping **ROAD ROASTER**.
 - Controls the controller LCD and rear matrix independently in 5% steps from
   5–100%.
+- Flips the controller LCD/touch coordinates and rear matrix independently by
+  180 degrees from the same display settings popup.
 - Reports rear brightness over ESP-NOW and shows its slider disabled in gray
   while the rear unit is unavailable.
-- Persists controller brightness, rear brightness, and per-message duration
-  preferences in NVS memory, retries failed brightness writes, and keeps the
-  duration dialog open with an error when a duration cannot be saved.
+- Persists controller/rear brightness, both flip settings, and per-message
+  duration preferences in NVS memory, retries failed display-setting writes,
+  and keeps the duration dialog open with an error when a duration cannot be
+  saved.
 - Uses one shared, round-screen-safe popup style for duration, brightness, and
   future dialogs. Popups open instantly without display animation.
 - Uses the onboard DRV2605 motor's strong-click effect for knob interactions,
@@ -119,9 +122,10 @@ Run shared protocol and catalog tests with a host C/C++ compiler available in
 - Long-press a message: open the duration popup.
 - Rotate inside the duration popup: select `Default` or 5–60 seconds.
 - Tap **Save**: persist the selected duration; tap **Cancel** to discard it.
-- Tap **ROAD ROASTER**: open brightness settings.
+- Tap **ROAD ROASTER**: open display settings.
 - Touch a brightness slider, then rotate the knob or drag the slider: adjust
   the selected display brightness.
+- Toggle **FLIP** for the controller or rear display independently.
 - Tap **Clear**: blank the active rear message.
 
 ## Customize messages

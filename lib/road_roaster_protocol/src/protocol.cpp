@@ -75,25 +75,29 @@ class Reader {
 
 bool isKnownType(uint8_t raw) {
   return raw >= static_cast<uint8_t>(PacketType::CatalogRequest) &&
-         raw <= static_cast<uint8_t>(PacketType::SetBrightness);
+         raw <= static_cast<uint8_t>(PacketType::SetFlip);
 }
 
 bool writeState(Writer& writer, const RearState& state) {
   return writer.u32(state.catalog_revision) && writer.u8(state.active ? 1 : 0) &&
          writer.u16(state.preset_id) && writer.u32(state.total_duration_ms) &&
-         writer.u32(state.remaining_ms) && writer.u8(state.brightness_percent);
+         writer.u32(state.remaining_ms) && writer.u8(state.brightness_percent) &&
+         writer.u8(state.flipped ? 1 : 0);
 }
 
 bool readState(Reader& reader, RearState& state) {
   uint8_t active = 0;
+  uint8_t flipped = 0;
   if (!reader.u32(state.catalog_revision) || !reader.u8(active) || active > 1 ||
       !reader.u16(state.preset_id) || !reader.u32(state.total_duration_ms) ||
       !reader.u32(state.remaining_ms) ||
       !reader.u8(state.brightness_percent) ||
-      !isValidBrightness(state.brightness_percent)) {
+      !isValidBrightness(state.brightness_percent) || !reader.u8(flipped) ||
+      flipped > 1) {
     return false;
   }
   state.active = active == 1;
+  state.flipped = flipped == 1;
   return true;
 }
 
@@ -130,6 +134,8 @@ bool writePayload(Writer& writer, const Packet& packet) {
              writer.u32(packet.duration_override_ms);
     case PacketType::SetBrightness:
       return writer.u8(packet.brightness_percent);
+    case PacketType::SetFlip:
+      return writer.u8(packet.flipped ? 1 : 0);
     case PacketType::Clear:
     case PacketType::GetStatus:
       return true;
@@ -178,6 +184,12 @@ bool readPayload(Reader& reader, Packet& packet) {
              reader.u32(packet.duration_override_ms);
     case PacketType::SetBrightness:
       return reader.u8(packet.brightness_percent);
+    case PacketType::SetFlip: {
+      uint8_t flipped = 0;
+      if (!reader.u8(flipped) || flipped > 1) return false;
+      packet.flipped = flipped == 1;
+      return true;
+    }
     case PacketType::Clear:
     case PacketType::GetStatus:
       return true;

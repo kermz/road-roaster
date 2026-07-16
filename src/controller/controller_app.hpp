@@ -21,6 +21,7 @@ class ControllerApp {
   static void clearRequested(void* context);
   static void brightnessRequested(void* context, bool rear_display,
                                   uint8_t brightness_percent);
+  static void flipRequested(void* context, bool rear_display, bool flipped);
   static uint32_t durationOverrideRequested(void* context,
                                             uint16_t preset_id);
   static bool durationOverrideSaved(void* context, uint16_t preset_id,
@@ -46,7 +47,10 @@ class ControllerApp {
   void sendClear();
   void serviceBrightness(uint32_t now_ms);
   void sendRearBrightness(uint32_t now_ms);
+  void sendRearFlip(uint32_t now_ms);
   void persistControllerBrightnessIfDue(uint32_t now_ms);
+  void persistControllerFlipIfDue(uint32_t now_ms);
+  void refreshDisplaySettings(bool rear_available);
   void serviceBattery(uint32_t now_ms);
   bool ensurePreferences();
   uint32_t loadDurationOverride(uint16_t preset_id);
@@ -71,6 +75,11 @@ class ControllerApp {
   bool rear_brightness_dirty_ = false;
   bool controller_brightness_save_pending_ = false;
   uint32_t controller_brightness_save_due_ms_ = 0;
+  bool controller_flipped_ = false;
+  bool desired_rear_flipped_ = false;
+  bool rear_flip_dirty_ = false;
+  bool controller_flip_save_pending_ = false;
+  uint32_t controller_flip_save_due_ms_ = 0;
   uint32_t next_battery_sample_ms_ = 0;
   uint8_t battery_percent_ = 0;
   uint8_t battery_read_failures_ = 0;

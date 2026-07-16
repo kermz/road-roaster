@@ -55,6 +55,7 @@ std::atomic<bool> complete_frame_submitted{false};
 std::atomic<bool> first_frame_ready{false};
 bool backlight_enabled = false;
 bool haptic_ready = false;
+bool display_flipped = false;
 uint8_t requested_backlight_percent = 80;
 uint32_t last_haptic_ms = 0;
 uint8_t last_encoder_a = 1;
@@ -114,8 +115,10 @@ void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
-  data->point.x = std::min<uint16_t>(x, kDisplayWidth - 1);
-  data->point.y = std::min<uint16_t>(y, kDisplayHeight - 1);
+  x = std::min<uint16_t>(x, kDisplayWidth - 1);
+  y = std::min<uint16_t>(y, kDisplayHeight - 1);
+  data->point.x = display_flipped ? kDisplayWidth - 1 - x : x;
+  data->point.y = display_flipped ? kDisplayHeight - 1 - y : y;
   data->state = LV_INDEV_STATE_PRESSED;
 }
 
@@ -390,6 +393,17 @@ void setBacklight(uint8_t percent) {
   const uint32_t duty = requested_backlight_percent * 255U / 100U;
   ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+}
+
+void setDisplayFlipped(bool flipped) {
+  display_flipped = flipped;
+  if (panel != nullptr &&
+      esp_lcd_panel_mirror(panel, flipped, flipped) == ESP_OK) {
+    // Changing MADCTL rotates the panel's existing GRAM contents immediately,
+    // but LVGL otherwise redraws only the switch that triggered the change.
+    // Invalidate the root so every region is repainted in the new orientation.
+    lv_obj_invalidate(lv_scr_act());
+  }
 }
 
 bool readBatteryPercent(uint8_t& percent) {

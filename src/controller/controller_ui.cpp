@@ -138,6 +138,7 @@ void showModal(lv_obj_t* overlay, lv_obj_t* card) {
 void ControllerUi::begin(DisplayCallback display_callback,
                          ClearCallback clear_callback,
                          BrightnessCallback brightness_callback,
+                         FlipCallback flip_callback,
                          DurationLookupCallback duration_lookup_callback,
                          DurationSaveCallback duration_save_callback,
                          FeedbackCallback feedback_callback,
@@ -145,6 +146,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
   display_callback_ = display_callback;
   clear_callback_ = clear_callback;
   brightness_callback_ = brightness_callback;
+  flip_callback_ = flip_callback;
   duration_lookup_callback_ = duration_lookup_callback;
   duration_save_callback_ = duration_save_callback;
   feedback_callback_ = feedback_callback;
@@ -329,10 +331,10 @@ void ControllerUi::begin(DisplayCallback display_callback,
   settings_panel_ = settings_modal.overlay;
   settings_card_ = settings_modal.card;
   lv_obj_t* settings_card = settings_card_;
-  createModalTitle(settings_card, "BRIGHTNESS");
+  createModalTitle(settings_card, "DISPLAY");
 
   const char* brightness_names[] = {"CONTROLLER", "REAR DISPLAY"};
-  const int16_t label_y[] = {58, 139};
+  const int16_t label_y[] = {48, 128};
   for (uint8_t index = 0; index < 2; ++index) {
     brightness_name_labels_[index] = lv_label_create(settings_card);
     lv_label_set_text(brightness_name_labels_[index], brightness_names[index]);
@@ -348,8 +350,8 @@ void ControllerUi::begin(DisplayCallback display_callback,
     lv_obj_set_pos(brightness_values_[index], 170, label_y[index]);
 
     brightness_sliders_[index] = lv_slider_create(settings_card);
-    lv_obj_set_size(brightness_sliders_[index], 198, 18);
-    lv_obj_set_pos(brightness_sliders_[index], 26, label_y[index] + 27);
+    lv_obj_set_size(brightness_sliders_[index], 198, 16);
+    lv_obj_set_pos(brightness_sliders_[index], 26, label_y[index] + 25);
     lv_slider_set_range(brightness_sliders_[index], kMinBrightnessPercent,
                         kMaxBrightnessPercent);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
@@ -374,16 +376,45 @@ void ControllerUi::begin(DisplayCallback display_callback,
                          kIndicatorDisabledSelector);
     lv_obj_set_style_opa(brightness_sliders_[index], LV_OPA_50,
                          kKnobDisabledSelector);
-    lv_obj_set_style_pad_all(brightness_sliders_[index], 4, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(brightness_sliders_[index], 3, LV_PART_KNOB);
     lv_obj_add_event_cb(brightness_sliders_[index], brightnessSliderEvent,
                         LV_EVENT_PRESSED, this);
     lv_obj_add_event_cb(brightness_sliders_[index], brightnessSliderEvent,
+                        LV_EVENT_VALUE_CHANGED, this);
+
+    lv_obj_t* flip_label = lv_label_create(settings_card);
+    lv_label_set_text(flip_label, "FLIP");
+    makeLabelPlain(flip_label, &lv_font_montserrat_14, kMuted);
+    lv_obj_set_pos(flip_label, 26, label_y[index] + 56);
+
+    flip_switches_[index] = lv_switch_create(settings_card);
+    lv_obj_set_size(flip_switches_[index], 44, 22);
+    lv_obj_set_pos(flip_switches_[index], 180, label_y[index] + 52);
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kDivider),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kGreen),
+                              static_cast<lv_style_selector_t>(
+                                  LV_PART_INDICATOR) |
+                                  LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(flip_switches_[index], LV_OPA_COVER,
+                            static_cast<lv_style_selector_t>(
+                                LV_PART_INDICATOR) |
+                                LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kWhite),
+                              LV_PART_KNOB);
+    lv_obj_set_style_opa(flip_switches_[index], LV_OPA_50,
+                         kDisabledSelector);
+    lv_obj_set_style_opa(flip_switches_[index], LV_OPA_50,
+                         kIndicatorDisabledSelector);
+    lv_obj_set_style_opa(flip_switches_[index], LV_OPA_50,
+                         kKnobDisabledSelector);
+    lv_obj_add_event_cb(flip_switches_[index], flipSwitchEvent,
                         LV_EVENT_VALUE_CHANGED, this);
   }
 
   lv_obj_t* settings_back = lv_btn_create(settings_card);
   lv_obj_set_size(settings_back, 84, 38);
-  lv_obj_set_pos(settings_back, 83, 212);
+  lv_obj_set_pos(settings_back, 83, 216);
   configureModalButton(settings_back, false);
   lv_obj_add_event_cb(settings_back, settingsBackEvent, LV_EVENT_SHORT_CLICKED,
                       this);
@@ -412,9 +443,11 @@ void ControllerUi::setCatalog(const CatalogStore* catalog) {
   renderPage();
 }
 
-void ControllerUi::setBrightnessValues(uint8_t controller_percent,
-                                       uint8_t rear_percent,
-                                       bool rear_available) {
+void ControllerUi::setDisplaySettings(uint8_t controller_percent,
+                                      uint8_t rear_percent,
+                                      bool controller_flipped,
+                                      bool rear_flipped,
+                                      bool rear_available) {
   slider_update_guard_ = true;
   if (lv_slider_get_value(brightness_sliders_[0]) != controller_percent) {
     lv_slider_set_value(brightness_sliders_[0], controller_percent,
@@ -426,12 +459,24 @@ void ControllerUi::setBrightnessValues(uint8_t controller_percent,
     }
   }
   slider_update_guard_ = false;
+  flip_update_guard_ = true;
+  const bool flipped[] = {controller_flipped, rear_flipped};
+  for (uint8_t index = 0; index < 2; ++index) {
+    if (flipped[index]) {
+      lv_obj_add_state(flip_switches_[index], LV_STATE_CHECKED);
+    } else {
+      lv_obj_clear_state(flip_switches_[index], LV_STATE_CHECKED);
+    }
+  }
+  flip_update_guard_ = false;
   const bool rear_is_disabled =
       lv_obj_has_state(brightness_sliders_[1], LV_STATE_DISABLED);
   if (rear_available && rear_is_disabled) {
     lv_obj_clear_state(brightness_sliders_[1], LV_STATE_DISABLED);
+    lv_obj_clear_state(flip_switches_[1], LV_STATE_DISABLED);
   } else if (!rear_available && !rear_is_disabled) {
     lv_obj_add_state(brightness_sliders_[1], LV_STATE_DISABLED);
+    lv_obj_add_state(flip_switches_[1], LV_STATE_DISABLED);
   }
   const uint32_t rear_color = rear_available ? kWhite : kMuted;
   const uint32_t rear_value_color = rear_available ? kGreen : kMuted;
@@ -806,6 +851,18 @@ void ControllerUi::brightnessSliderEvent(lv_event_t* event) {
   if (ui->brightness_callback_ != nullptr) {
     ui->brightness_callback_(ui->callback_context_, index == 1,
                              static_cast<uint8_t>(snapped));
+  }
+}
+
+void ControllerUi::flipSwitchEvent(lv_event_t* event) {
+  auto* ui = static_cast<ControllerUi*>(lv_event_get_user_data(event));
+  if (ui == nullptr || ui->flip_update_guard_) return;
+  lv_obj_t* target = lv_event_get_target(event);
+  const uint8_t index = target == ui->flip_switches_[1] ? 1 : 0;
+  if (lv_obj_has_state(target, LV_STATE_DISABLED)) return;
+  if (ui->flip_callback_ != nullptr) {
+    ui->flip_callback_(ui->callback_context_, index == 1,
+                       lv_obj_has_state(target, LV_STATE_CHECKED));
   }
 }
 

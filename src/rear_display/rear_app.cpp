@@ -13,6 +13,7 @@ constexpr uint32_t kBrightnessSaveDelayMs = 750;
 constexpr uint32_t kPreferenceRetryDelayMs = 5000;
 constexpr const char* kPreferencesNamespace = "road-roaster";
 constexpr const char* kBrightnessKey = "matrix-pct";
+constexpr const char* kFlipKey = "matrix-flip";
 }  // namespace
 
 bool RearApp::begin() {
@@ -36,8 +37,9 @@ bool RearApp::begin() {
   if (!isValidBrightness(brightness_percent_)) {
     brightness_percent_ = config::kDefaultBrightnessPercent;
   }
+  flipped_ = preferences_ready_ ? preferences_.getBool(kFlipKey, false) : false;
 
-  if (!renderer_.begin(brightness_percent_)) {
+  if (!renderer_.begin(brightness_percent_, flipped_)) {
     Serial.println("FATAL: HUB75 DMA display initialization failed");
     return false;
   }
@@ -78,6 +80,7 @@ void RearApp::loop() {
 
   renderer_.tick(now_ms);
   persistBrightnessIfDue(now_ms);
+  persistFlipIfDue(now_ms);
   if (radio_.ready() && now_ms - last_status_ms_ >= 1000) {
     last_status_ms_ = now_ms;
     sendStatus(++transmit_sequence_, now_ms);
@@ -99,6 +102,7 @@ void RearApp::handlePacket(const Packet& packet, uint32_t now_ms) {
     case PacketType::Display:
     case PacketType::Clear:
     case PacketType::SetBrightness:
+    case PacketType::SetFlip:
       break;
     default:
       return;
@@ -128,13 +132,19 @@ void RearApp::handlePacket(const Packet& packet, uint32_t now_ms) {
     }
   } else if (packet.type == PacketType::Clear) {
     clearDisplay();
-  } else if (!isValidBrightness(packet.brightness_percent)) {
+  } else if (packet.type == PacketType::SetBrightness &&
+             !isValidBrightness(packet.brightness_percent)) {
     result = AckResult::InvalidBrightness;
-  } else {
+  } else if (packet.type == PacketType::SetBrightness) {
     brightness_percent_ = packet.brightness_percent;
     renderer_.setBrightness(brightness_percent_);
     brightness_save_pending_ = true;
     brightness_save_due_ms_ = now_ms + kBrightnessSaveDelayMs;
+  } else {
+    flipped_ = packet.flipped;
+    renderer_.setFlipped(flipped_);
+    flip_save_pending_ = true;
+    flip_save_due_ms_ = now_ms + kBrightnessSaveDelayMs;
   }
 
   processed_.remember(packet.sequence, packet.type, result);
@@ -196,6 +206,7 @@ RearState RearApp::currentState(uint32_t now_ms) const {
   RearState state;
   state.catalog_revision = catalogRevision();
   state.brightness_percent = brightness_percent_;
+  state.flipped = flipped_;
   state.active = active_preset_ != nullptr;
   if (state.active) {
     state.preset_id = active_preset_->id;
@@ -218,6 +229,17 @@ void RearApp::persistBrightnessIfDue(uint32_t now_ms) {
     return;
   }
   brightness_save_pending_ = false;
+}
+
+void RearApp::persistFlipIfDue(uint32_t now_ms) {
+  if (!flip_save_pending_ ||
+      static_cast<int32_t>(now_ms - flip_save_due_ms_) < 0) return;
+  if (!ensurePreferences() || preferences_.putBool(kFlipKey, flipped_) == 0) {
+    Serial.println("WARNING: failed to save rear flip setting; retrying");
+    flip_save_due_ms_ = now_ms + kPreferenceRetryDelayMs;
+    return;
+  }
+  flip_save_pending_ = false;
 }
 
 bool RearApp::ensurePreferences() {

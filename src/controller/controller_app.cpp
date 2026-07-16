@@ -20,6 +20,7 @@ constexpr uint32_t kBatterySampleIntervalMs = 10000;
 constexpr uint8_t kBatteryFailuresBeforeUnavailable = 3;
 constexpr const char* kPreferencesNamespace = "road-roaster";
 constexpr const char* kBrightnessKey = "lcd-pct";
+constexpr const char* kFlipKey = "lcd-flip";
 
 void durationKey(uint16_t preset_id, char (&key)[10]) {
   std::snprintf(key, sizeof(key), "dur-%04X", preset_id);
@@ -42,13 +43,16 @@ bool ControllerApp::begin() {
   if (!isValidBrightness(controller_brightness_percent_)) {
     controller_brightness_percent_ = 80;
   }
+  controller_flipped_ =
+      preferences_ready_ ? preferences_.getBool(kFlipKey, false) : false;
+  knob_board::setDisplayFlipped(controller_flipped_);
   knob_board::setBacklight(controller_brightness_percent_);
 
   ui_.begin(displayRequested, clearRequested, brightnessRequested,
+            flipRequested,
             durationOverrideRequested, durationOverrideSaved,
             uiFeedbackRequested, this);
-  ui_.setBrightnessValues(controller_brightness_percent_,
-                          desired_rear_brightness_percent_, false);
+  refreshDisplaySettings(false);
   serviceBattery(millis());
 
   RadioConfig config;
@@ -79,6 +83,7 @@ void ControllerApp::loop() {
   servicePending(now_ms);
   serviceBrightness(now_ms);
   persistControllerBrightnessIfDue(now_ms);
+  persistControllerFlipIfDue(now_ms);
   serviceBattery(now_ms);
   if (sync_in_progress_ && !pending_.active() &&
       static_cast<int32_t>(now_ms - next_sync_attempt_ms_) >= 0) {
@@ -89,8 +94,7 @@ void ControllerApp::loop() {
       now_ms >= kHeartbeatTimeoutMs) {
     unavailable_shown_ = true;
     ui_.showRearUnavailable();
-    ui_.setBrightnessValues(controller_brightness_percent_,
-                            desired_rear_brightness_percent_, false);
+    refreshDisplaySettings(false);
     knob_board::vibrate();
   }
 
@@ -171,19 +175,22 @@ void ControllerApp::handleAck(const Packet& packet, uint32_t now_ms) {
   const PacketType request_type = pending_.packet().type;
   pending_.clear();
 
-  if (request_type == PacketType::SetBrightness) {
+  if (request_type == PacketType::SetBrightness ||
+      request_type == PacketType::SetFlip) {
     have_rear_state_ = true;
     rear_state_ = packet.state;
     unavailable_shown_ = false;
     if (packet.ack_result == AckResult::Applied) {
-      if (desired_rear_brightness_percent_ ==
-          rear_state_.brightness_percent) {
+      if (request_type == PacketType::SetBrightness &&
+          desired_rear_brightness_percent_ == rear_state_.brightness_percent) {
         rear_brightness_dirty_ = false;
       }
-      if (!rear_brightness_dirty_) {
-        ui_.setBrightnessValues(controller_brightness_percent_,
-                                rear_state_.brightness_percent, true);
+      if (request_type == PacketType::SetFlip &&
+          desired_rear_flipped_ == rear_state_.flipped) {
+        rear_flip_dirty_ = false;
       }
+      if (!rear_brightness_dirty_ && !rear_flip_dirty_)
+        refreshDisplaySettings(true);
       knob_board::vibrate();
     }
     return;
@@ -216,7 +223,8 @@ void ControllerApp::handleState(const RearState& state, uint32_t now_ms,
       have_rear_state_ &&
       (rear_state_.active != state.active ||
        rear_state_.preset_id != state.preset_id ||
-       rear_state_.brightness_percent != state.brightness_percent);
+       rear_state_.brightness_percent != state.brightness_percent ||
+       rear_state_.flipped != state.flipped);
   rear_state_ = state;
   have_rear_state_ = true;
   if (heartbeat) last_heartbeat_ms_ = now_ms;
@@ -225,9 +233,12 @@ void ControllerApp::handleState(const RearState& state, uint32_t now_ms,
       !(pending_.active() &&
         pending_.packet().type == PacketType::SetBrightness)) {
     desired_rear_brightness_percent_ = state.brightness_percent;
-    ui_.setBrightnessValues(controller_brightness_percent_,
-                            state.brightness_percent, true);
   }
+  if (!rear_flip_dirty_ &&
+      !(pending_.active() && pending_.packet().type == PacketType::SetFlip)) {
+    desired_rear_flipped_ = state.flipped;
+  }
+  refreshDisplaySettings(true);
   if (meaningful_change) knob_board::vibrate();
 
   if (!catalog_.complete() || state.catalog_revision != catalog_.revision()) {
@@ -277,12 +288,12 @@ void ControllerApp::completeCatalogSync() {
   if (have_rear_state_ && rear_state_.catalog_revision == catalog_.revision() &&
       rearAvailable(millis())) {
     ui_.showRearState(rear_state_, millis());
-    ui_.setBrightnessValues(controller_brightness_percent_,
-                            rear_state_.brightness_percent, true);
+    desired_rear_brightness_percent_ = rear_state_.brightness_percent;
+    desired_rear_flipped_ = rear_state_.flipped;
+    refreshDisplaySettings(true);
   } else {
     ui_.showRearUnavailable();
-    ui_.setBrightnessValues(controller_brightness_percent_,
-                            desired_rear_brightness_percent_, false);
+    refreshDisplaySettings(false);
   }
 }
 
@@ -309,6 +320,8 @@ void ControllerApp::servicePending(uint32_t now_ms) {
     // Keep the latest requested value queued. A heartbeat will make it
     // eligible for another command attempt without disrupting catalog state.
     rear_brightness_dirty_ = true;
+  } else if (failed_type == PacketType::SetFlip) {
+    rear_flip_dirty_ = true;
   } else {
     sync_in_progress_ = true;
     next_sync_attempt_ms_ = now_ms + kCatalogRetryDelayMs;
@@ -325,7 +338,8 @@ bool ControllerApp::isCommandPending() const {
   return pending_.active() &&
          (pending_.packet().type == PacketType::Display ||
           pending_.packet().type == PacketType::Clear ||
-          pending_.packet().type == PacketType::SetBrightness);
+          pending_.packet().type == PacketType::SetBrightness ||
+          pending_.packet().type == PacketType::SetFlip);
 }
 
 bool ControllerApp::rearAvailable(uint32_t now_ms) const {
@@ -393,6 +407,22 @@ void ControllerApp::brightnessRequested(void* context, bool rear_display,
       millis() + kBrightnessSaveDelayMs;
 }
 
+void ControllerApp::flipRequested(void* context, bool rear_display,
+                                  bool flipped) {
+  auto* app = static_cast<ControllerApp*>(context);
+  if (app == nullptr) return;
+  knob_board::vibrate();
+  if (rear_display) {
+    app->desired_rear_flipped_ = flipped;
+    app->rear_flip_dirty_ = true;
+    return;
+  }
+  app->controller_flipped_ = flipped;
+  knob_board::setDisplayFlipped(flipped);
+  app->controller_flip_save_pending_ = true;
+  app->controller_flip_save_due_ms_ = millis() + kBrightnessSaveDelayMs;
+}
+
 uint32_t ControllerApp::durationOverrideRequested(void* context,
                                                   uint16_t preset_id) {
   auto* app = static_cast<ControllerApp*>(context);
@@ -418,7 +448,18 @@ void ControllerApp::serviceBrightness(uint32_t now_ms) {
   if (rear_brightness_dirty_ && !pending_.active() && !sync_in_progress_ &&
       rearAvailable(now_ms)) {
     sendRearBrightness(now_ms);
+  } else if (rear_flip_dirty_ && !pending_.active() && !sync_in_progress_ &&
+             rearAvailable(now_ms)) {
+    sendRearFlip(now_ms);
   }
+}
+
+void ControllerApp::sendRearFlip(uint32_t now_ms) {
+  Packet request;
+  request.type = PacketType::SetFlip;
+  request.sequence = nextSequence();
+  request.flipped = desired_rear_flipped_;
+  beginRequest(request, now_ms);
 }
 
 void ControllerApp::sendRearBrightness(uint32_t now_ms) {
@@ -442,6 +483,24 @@ void ControllerApp::persistControllerBrightnessIfDue(uint32_t now_ms) {
     return;
   }
   controller_brightness_save_pending_ = false;
+}
+
+void ControllerApp::persistControllerFlipIfDue(uint32_t now_ms) {
+  if (!controller_flip_save_pending_ ||
+      static_cast<int32_t>(now_ms - controller_flip_save_due_ms_) < 0) return;
+  if (!ensurePreferences() ||
+      preferences_.putBool(kFlipKey, controller_flipped_) == 0) {
+    Serial.println("WARNING: failed to save controller flip setting; retrying");
+    controller_flip_save_due_ms_ = now_ms + kPreferenceRetryDelayMs;
+    return;
+  }
+  controller_flip_save_pending_ = false;
+}
+
+void ControllerApp::refreshDisplaySettings(bool rear_available) {
+  ui_.setDisplaySettings(controller_brightness_percent_,
+                         desired_rear_brightness_percent_, controller_flipped_,
+                         desired_rear_flipped_, rear_available);
 }
 
 void ControllerApp::serviceBattery(uint32_t now_ms) {

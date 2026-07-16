@@ -78,7 +78,7 @@ constexpr HUB75_I2S_CFG::i2s_pins kWavesharePins = {
 
 }  // namespace
 
-bool MatrixRenderer::begin(uint8_t brightness_percent) {
+bool MatrixRenderer::begin(uint8_t brightness_percent, bool flipped) {
   HUB75_I2S_CFG config(kPanelWidth, kPanelHeight, kPanelChain, kWavesharePins);
   config.clkphase = false;
   config.driver = HUB75_I2S_CFG::SHIFTREG;
@@ -90,11 +90,17 @@ bool MatrixRenderer::begin(uint8_t brightness_percent) {
     return false;
   }
   setBrightness(brightness_percent);
+  setFlipped(flipped);
   display_->clearScreen();
   display_->flipDMABuffer();
   display_->clearScreen();
   display_->flipDMABuffer();
   return true;
+}
+
+void MatrixRenderer::setFlipped(bool flipped) {
+  flipped_ = flipped;
+  if (display_) display_->setRotation(flipped ? 2 : 0);
 }
 
 void MatrixRenderer::setBrightness(uint8_t brightness_percent) {

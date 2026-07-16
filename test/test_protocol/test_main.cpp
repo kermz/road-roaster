@@ -56,7 +56,7 @@ void test_status_round_trip() {
   rr::Packet packet;
   packet.type = rr::PacketType::Status;
   packet.sequence = 99;
-  packet.state = {77, true, 7, 30000, 14000, 35};
+  packet.state = {77, true, 7, 30000, 14000, 35, true};
 
   std::array<uint8_t, rr::kMaxEspNowPayload> bytes{};
   const size_t length = rr::encodePacket(packet, bytes.data(), bytes.size());
@@ -66,6 +66,7 @@ void test_status_round_trip() {
   TEST_ASSERT_EQUAL_UINT16(7, decoded.packet.state.preset_id);
   TEST_ASSERT_EQUAL_UINT32(14000, decoded.packet.state.remaining_ms);
   TEST_ASSERT_EQUAL_UINT8(35, decoded.packet.state.brightness_percent);
+  TEST_ASSERT_TRUE(decoded.packet.state.flipped);
 }
 
 void test_malformed_packets_are_rejected() {
@@ -157,7 +158,7 @@ void test_every_command_and_manifest_packet_round_trips() {
   ack.sequence = 101;
   ack.ack_result = rr::AckResult::Applied;
   ack.acknowledged_type = rr::PacketType::Display;
-  ack.state = {0x12345678, true, 37, 60000, 59000, 35};
+  ack.state = {0x12345678, true, 37, 60000, 59000, 35, true};
   length = rr::encodePacket(ack, bytes.data(), bytes.size());
   decoded = rr::decodePacket(bytes.data(), length);
   TEST_ASSERT_TRUE(decoded);
@@ -185,6 +186,20 @@ void test_every_command_and_manifest_packet_round_trips() {
   decoded = rr::decodePacket(bytes.data(), length);
   TEST_ASSERT_TRUE(decoded);
   TEST_ASSERT_EQUAL_UINT8(65, decoded.packet.brightness_percent);
+
+  rr::Packet flip;
+  flip.type = rr::PacketType::SetFlip;
+  flip.sequence = 104;
+  flip.flipped = true;
+  length = rr::encodePacket(flip, bytes.data(), bytes.size());
+  decoded = rr::decodePacket(bytes.data(), length);
+  TEST_ASSERT_TRUE(decoded);
+  TEST_ASSERT_TRUE(decoded.packet.flipped);
+
+  bytes[10] = 2;
+  decoded = rr::decodePacket(bytes.data(), length);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(rr::DecodeError::InvalidPayload),
+                          static_cast<uint8_t>(decoded.error));
 }
 
 void test_maximum_catalog_and_packet_size_are_supported() {

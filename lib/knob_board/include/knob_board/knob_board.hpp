@@ -24,6 +24,9 @@ int consumeEncoderDelta();
 
 void setBacklight(uint8_t percent);
 
+// Rotates the LCD and touch coordinates together by 180 degrees.
+void setDisplayFlipped(bool flipped);
+
 // Returns an averaged estimate of the connected single-cell Li-ion battery.
 // The board exposes the system voltage on GPIO 1 through a 2:1 divider.
 // Returns false when the ADC or its calibration data is unavailable.

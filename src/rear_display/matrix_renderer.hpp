@@ -11,8 +11,9 @@ namespace rr::rear {
 
 class MatrixRenderer {
  public:
-  bool begin(uint8_t brightness_percent);
+  bool begin(uint8_t brightness_percent, bool flipped);
   void setBrightness(uint8_t brightness_percent);
+  void setFlipped(bool flipped);
   void show(const PresetDefinition* preset, uint32_t started_ms);
   void clear();
   void tick(uint32_t now_ms);
@@ -28,6 +29,7 @@ class MatrixRenderer {
   uint32_t started_ms_ = 0;
   uint32_t last_frame_ms_ = 0;
   uint8_t brightness_percent_ = 35;
+  bool flipped_ = false;
 };
 
 }  // namespace rr::rear

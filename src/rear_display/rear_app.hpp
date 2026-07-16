@@ -24,6 +24,7 @@ class RearApp {
   RearState currentState(uint32_t now_ms) const;
   void clearDisplay();
   void persistBrightnessIfDue(uint32_t now_ms);
+  void persistFlipIfDue(uint32_t now_ms);
   bool ensurePreferences();
 
   RadioTransport radio_;
@@ -39,6 +40,9 @@ class RearApp {
   uint8_t brightness_percent_ = 35;
   bool brightness_save_pending_ = false;
   uint32_t brightness_save_due_ms_ = 0;
+  bool flipped_ = false;
+  bool flip_save_pending_ = false;
+  uint32_t flip_save_due_ms_ = 0;
 };
 
 }  // namespace rr::rear
