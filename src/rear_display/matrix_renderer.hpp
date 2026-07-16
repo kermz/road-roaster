@@ -19,7 +19,8 @@ class MatrixRenderer {
 
  private:
   void renderFrame(uint32_t now_ms);
-  void drawCentered(const char* text, uint16_t color, uint8_t text_size);
+  void drawScreenSequence(const PresetDefinition& preset, uint16_t color,
+                          uint32_t elapsed_ms);
   uint16_t colorWheel(uint8_t position) const;
 
   std::unique_ptr<MatrixPanel_I2S_DMA> display_;

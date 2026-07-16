@@ -1,26 +1,27 @@
 # Road Roaster
 
 Road Roaster is a two-board ESP32-S3 template for selecting preset messages on
-a Waveshare knob/touch controller and displaying them on a 64×32 P4 HUB75 LED
-matrix. The boards communicate directly over encrypted ESP-NOW; no router or
-phone is involved.
+a Waveshare knob/touch controller and displaying them across two chained 64×32
+P4 HUB75 LED panels as one 128×32 canvas. The boards communicate directly over
+encrypted ESP-NOW; no router or phone is involved.
 
-The rear board is the source of truth. It owns every message, its matrix text,
-animation, and default duration. The controller learns the catalog at runtime,
-shows four messages per page, and displays only state acknowledged by the rear
-board.
+The rear board is the source of truth. It owns every message, its explicit list
+of matrix screens, animation, and default duration. The controller learns the
+catalog at runtime, shows four messages per page, and displays only state
+acknowledged by the rear board.
 
 ## Hardware
 
 - [Waveshare ESP32-S3 RGB Matrix](https://www.waveshare.com/esp32-s3-rgb-matrix.htm)
-- One 64×32 P4 HUB75 panel
+- Two daisy-chained 64×32 P4 HUB75 panels (128×32 total)
 - [Waveshare ESP32-S3 Knob Touch LCD 1.8](https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm)
 
-Use a properly rated 5 V supply for the matrix and connect the grounds. Do not
-route panel current through either ESP32 board or its USB connector. The matrix
-starts at 35% brightness and the controller LCD at 80%. Both values can be
-changed independently from the controller and persist in each board's NVS
-memory. Check panel power and thermal behavior before using high brightness.
+Connect the HUB75 output of the first panel to the input of the second. Use a
+properly rated 5 V supply for both panels and connect all grounds. Do not route
+panel current through either ESP32 board or its USB connector. The matrix starts
+at 35% brightness and the controller LCD at 80%. Both values can be changed
+independently from the controller and persist in each board's NVS memory. Check
+panel power and thermal behavior before using high brightness.
 
 ## Features
 
@@ -58,8 +59,11 @@ memory. Check panel power and thermal behavior before using high brightness.
   popup opening, saved settings, acknowledgements, state changes, and
   connection loss, without vibrating on every countdown tick.
 
-The initial catalog contains `Message 01` through `Message 12`, spread across
-three UI pages, with static, pulse, marquee, and color-cycle examples.
+The current catalog contains 12 entries across three UI pages. The first nine
+are road messages such as `Sell it`, `Thanks`, `Sorry`, `Wanna race?`, and
+`Nice car`; entries 10–12 remain editable example placeholders. The catalog
+includes static, pulse, and color-cycle animation settings, while oversized
+screens scroll automatically.
 
 ## First-time radio setup
 
@@ -125,18 +129,40 @@ Run shared protocol and catalog tests with a host C/C++ compiler available in
 Edit only `src/rear_display/message_catalog.cpp`. Each entry is:
 
 ```cpp
-{id, "Controller label", "MATRIX TEXT", AnimationKind::Static,
+{id, "Controller label", {{"SCREEN 1", "SCREEN 2"}}, AnimationKind::Static,
  {red, green, blue}, default_duration_ms}
 ```
+
+Each string inside the nested braces is one intentional display screen. Keep
+text that must appear together in the same string. For example:
+
+```cpp
+{4, "Wanna race?", {{"You seem fast", "prove it"}},
+ AnimationKind::Static, {255, 255, 255}, kDefaultDurationMs}
+```
+
+This creates two screens. Commas and other punctuation inside a screen remain
+ordinary visible text and have no layout meaning.
 
 Requirements:
 
 - IDs are non-zero `uint16_t` values and must be unique.
-- Controller labels are at most 31 UTF-8 bytes.
+- Controller labels are non-empty ASCII strings of at most 31 bytes. The
+  bundled LVGL Montserrat builds only contain ASCII plus selected symbols, so
+  catalog validation rejects non-ASCII labels. The bundled
+  `Montserrat-Medium.ttf` contains Estonian characters and can be used to
+  generate custom LVGL subsets if accented controller labels are needed; add
+  the subset at both 18 px and 22 px.
 - The catalog may contain at most 64 entries.
-- Matrix text stays on the rear, may contain at most 512 bytes, and is not
-  constrained by the radio label limit. Long text is best paired with
-  `AnimationKind::Marquee`.
+- A preset contains one to four non-empty screens. Screen entries must be
+  contiguous; do not leave an empty slot between two screens.
+- Each screen stays on the rear, must be valid UTF-8, may contain at most 512
+  bytes, and is not constrained by the radio label limit. The Spleen strikes
+  cover Latin-1; valid characters outside Latin-1 render as `?`.
+- Every screen independently selects the largest native bitmap strike that
+  fits the 128×32 canvas. A screen that remains too wide scrolls automatically.
+- A single fitting screen remains steady. Multiple screens advance in their
+  listed order and loop for the preset's active duration.
 - The controller does not need to be rebuilt after a rear catalog change.
 
 Duplicate IDs or invalid entries stop rear application startup and print a
@@ -157,15 +183,26 @@ fatal configuration error instead of advertising an ambiguous catalog.
 - `boards/` — hardware-accurate PlatformIO definitions for both ESP32-S3 boards
 
 The LCD and HUB75 pin maps and display initialization are adapted from
-Waveshare's examples. The rear configuration uses GPIO E 9, `SHIFTREG`, a
-false clock phase, and double buffering as required by the RGB Matrix board.
+Waveshare's examples. The rear configuration drives two chained 64×32 panels
+as a 128×32 canvas, leaves GPIO E unused for the 1/16-scan panels, and uses
+`SHIFTREG`, a false clock phase, and double buffering.
+Rear-display text uses Spleen's native bitmap strikes at 16×32, 12×24, 8×16,
+and 6×12 pixels. The BDF sources and BSD 2-Clause License are in
+`tools/fonts/spleen/`.
+
+Each rear-display preset declares an explicit list of screens in
+`message_catalog.cpp`. Text within one entry is fitted and displayed together;
+separate entries advance as separate screens. For example,
+`{{"You seem fast", "prove it"}}` creates two screens without treating commas
+or other punctuation as layout commands.
 
 ## Hardware verification checklist
 
 Compilation validates the pinned APIs, but these checks require the physical
-boards and panel:
+boards and panels:
 
-- Confirm red, green, and blue channels and row order with all four animations.
+- Confirm red, green, and blue channels and row order with all three animation
+  modes and automatic scrolling.
 - Look for flicker or ghosting at the intended brightness and supply load.
 - Confirm clockwise knob direction; swap the sign in `ControllerApp::loop()`
   if the installed encoder feels reversed.

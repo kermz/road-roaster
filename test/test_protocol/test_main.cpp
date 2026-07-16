@@ -5,6 +5,7 @@
 
 #include "rr/catalog_store.hpp"
 #include "rr/protocol.hpp"
+#include "rr/text_encoding.hpp"
 
 extern "C" void setUp() {}
 extern "C" void tearDown() {}
@@ -408,6 +409,33 @@ void test_brightness_validation() {
   TEST_ASSERT_EQUAL_UINT8(37, decoded.packet.brightness_percent);
 }
 
+void test_utf8_validation_and_latin1_encoding() {
+  TEST_ASSERT_TRUE(rr::isValidUtf8("ASCII"));
+  TEST_ASSERT_TRUE(rr::isValidUtf8(u8"õäöü ÕÄÖÜ"));
+  TEST_ASSERT_TRUE(rr::isAscii("ASCII"));
+  TEST_ASSERT_FALSE(rr::isAscii(u8"ö"));
+
+  const char incomplete[] = {static_cast<char>(0xE2), '\0'};
+  const char overlong[] = {static_cast<char>(0xC0),
+                           static_cast<char>(0xAF), '\0'};
+  TEST_ASSERT_FALSE(rr::isValidUtf8(incomplete));
+  TEST_ASSERT_FALSE(rr::isValidUtf8(overlong));
+
+  char encoded[16]{};
+  TEST_ASSERT_EQUAL_UINT(4,
+                         rr::encodeLatin1(u8"õäöü", encoded, sizeof(encoded)));
+  const uint8_t expected[] = {0xF5, 0xE4, 0xF6, 0xFC};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected,
+                                reinterpret_cast<const uint8_t*>(encoded), 4);
+
+  TEST_ASSERT_EQUAL_UINT(1,
+                         rr::encodeLatin1(u8"€", encoded, sizeof(encoded)));
+  TEST_ASSERT_EQUAL_CHAR('?', encoded[0]);
+  TEST_ASSERT_EQUAL_UINT(1,
+                         rr::encodeLatin1(incomplete, encoded, sizeof(encoded)));
+  TEST_ASSERT_EQUAL_STRING("?", encoded);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -428,5 +456,6 @@ int main(int, char**) {
   RUN_TEST(test_request_timeout_and_catalog_sync_policy);
   RUN_TEST(test_request_coordinator_scenarios);
   RUN_TEST(test_brightness_validation);
+  RUN_TEST(test_utf8_validation_and_latin1_encoding);
   return UNITY_END();
 }

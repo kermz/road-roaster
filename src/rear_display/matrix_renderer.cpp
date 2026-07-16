@@ -1,15 +1,63 @@
 #include "matrix_renderer.hpp"
 
 #include <algorithm>
-#include <cstring>
+
+#include "rr/text_encoding.hpp"
+#include "spleen_bitmaps.hpp"
 
 namespace rr::rear {
 namespace {
 
 constexpr uint16_t kPanelWidth = 64;
 constexpr uint16_t kPanelHeight = 32;
-constexpr uint16_t kPanelChain = 1;
-constexpr uint32_t kFrameIntervalMs = 33;
+constexpr uint16_t kPanelChain = 2;
+constexpr uint16_t kDisplayWidth = kPanelWidth * kPanelChain;
+constexpr uint16_t kDisplayHeight = kPanelHeight;
+constexpr uint32_t kFrameIntervalMs = 67;
+constexpr uint32_t kWordHoldMs = 750;
+constexpr uint32_t kWordGapMs = 100;
+constexpr uint32_t kScrollStepMs = 35;
+
+struct WordMetrics {
+  const GFXfont* font;
+  int16_t x1;
+  int16_t y1;
+  uint16_t width;
+  uint16_t height;
+};
+
+WordMetrics measureWord(MatrixPanel_I2S_DMA* display, const char* word) {
+  WordMetrics scrolling_fallback{};
+  for (size_t index = 0; index < matrix_font::kStrikeCount; ++index) {
+    const GFXfont* font = matrix_font::kStrikes[index];
+    display->setFont(font);
+    int16_t x1 = 0;
+    int16_t y1 = 0;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    display->getTextBounds(word, 0, 0, &x1, &y1, &width, &height);
+    const WordMetrics candidate{font, x1, y1, width, height};
+    if (height <= kDisplayHeight && scrolling_fallback.font == nullptr) {
+      scrolling_fallback = candidate;
+    }
+    if (width <= kDisplayWidth && height <= kDisplayHeight) {
+      return candidate;
+    }
+  }
+  return scrolling_fallback.font != nullptr ? scrolling_fallback
+                                             : WordMetrics{};
+}
+
+void drawWord(MatrixPanel_I2S_DMA* display, const char* word, int16_t left,
+              const WordMetrics& metrics, uint16_t color) {
+  if (metrics.font == nullptr) return;
+  display->setFont(metrics.font);
+  const int16_t top =
+      (static_cast<int16_t>(kDisplayHeight) - metrics.height) / 2;
+  display->setCursor(left - metrics.x1, top - metrics.y1);
+  display->setTextColor(color);
+  display->print(word);
+}
 
 constexpr HUB75_I2S_CFG::i2s_pins kWavesharePins = {
     4,   // R1
@@ -22,7 +70,7 @@ constexpr HUB75_I2S_CFG::i2s_pins kWavesharePins = {
     8,   // B
     3,   // C
     42,  // D
-    9,   // E
+    -1,  // E (unused by the 1/16-scan panel)
     40,  // LAT
     2,   // OE
     41,  // CLK
@@ -32,7 +80,6 @@ constexpr HUB75_I2S_CFG::i2s_pins kWavesharePins = {
 
 bool MatrixRenderer::begin(uint8_t brightness_percent) {
   HUB75_I2S_CFG config(kPanelWidth, kPanelHeight, kPanelChain, kWavesharePins);
-  config.gpio.e = 9;
   config.clkphase = false;
   config.driver = HUB75_I2S_CFG::SHIFTREG;
   config.double_buff = true;
@@ -76,7 +123,8 @@ void MatrixRenderer::clear() {
 }
 
 void MatrixRenderer::tick(uint32_t now_ms) {
-  if (preset_ == nullptr || !display_ || now_ms - last_frame_ms_ < kFrameIntervalMs) {
+  if (preset_ == nullptr || !display_ ||
+      now_ms - last_frame_ms_ < kFrameIntervalMs) {
     return;
   }
   last_frame_ms_ = now_ms;
@@ -92,7 +140,6 @@ void MatrixRenderer::renderFrame(uint32_t now_ms) {
                                       preset_->color.blue);
   switch (preset_->animation) {
     case AnimationKind::Static:
-      drawCentered(preset_->matrix_text, color, 1);
       break;
     case AnimationKind::Pulse: {
       const uint16_t phase = static_cast<uint16_t>(elapsed % 1600);
@@ -101,52 +148,65 @@ void MatrixRenderer::renderFrame(uint32_t now_ms) {
       color = display_->color565(preset_->color.red * scale / 255,
                                  preset_->color.green * scale / 255,
                                  preset_->color.blue * scale / 255);
-      drawCentered(preset_->matrix_text, color, 1);
-      break;
-    }
-    case AnimationKind::Marquee: {
-      display_->setTextSize(2);
-      int16_t x1 = 0;
-      int16_t y1 = 0;
-      uint16_t width = 0;
-      uint16_t height = 0;
-      display_->getTextBounds(preset_->matrix_text, 0, 0, &x1, &y1, &width,
-                              &height);
-      const uint32_t travel = static_cast<uint32_t>(width) + kPanelWidth;
-      const uint32_t phase = (elapsed / 35U) % travel;
-      const int32_t x = static_cast<int32_t>(kPanelWidth) -
-                        static_cast<int32_t>(phase);
-      const int16_t y = (static_cast<int16_t>(kPanelHeight) - height) / 2;
-      display_->setCursor(static_cast<int16_t>(x), y);
-      display_->setTextColor(color);
-      display_->print(preset_->matrix_text);
       break;
     }
     case AnimationKind::ColorCycle:
-      drawCentered(preset_->matrix_text,
-                   colorWheel(static_cast<uint8_t>(elapsed / 12)), 1);
+      color = colorWheel(static_cast<uint8_t>(elapsed / 12));
       break;
   }
+  drawScreenSequence(*preset_, color, elapsed);
   display_->flipDMABuffer();
 }
 
-void MatrixRenderer::drawCentered(const char* text, uint16_t color,
-                                  uint8_t text_size) {
-  display_->setTextSize(text_size);
-  int16_t x1 = 0;
-  int16_t y1 = 0;
-  uint16_t width = 0;
-  uint16_t height = 0;
-  display_->getTextBounds(text, 0, 0, &x1, &y1, &width, &height);
-  if (width > kPanelWidth && text_size > 1) {
-    drawCentered(text, color, text_size - 1);
+void MatrixRenderer::drawScreenSequence(const PresetDefinition& preset,
+                                        uint16_t color,
+                                        uint32_t elapsed_ms) {
+  auto screenDuration = [](uint16_t width) -> uint32_t {
+    if (width <= kDisplayWidth) return kWordHoldMs + kWordGapMs;
+    return (static_cast<uint32_t>(width) + kDisplayWidth) * kScrollStepMs +
+           kWordGapMs;
+  };
+
+  char encoded_screen[kMaxMatrixTextBytes + 1]{};
+  uint32_t cycle_duration_ms = 0;
+  size_t screen_count = 0;
+  for (const char* screen : preset.matrix_screens) {
+    if (screen == nullptr) break;
+    rr::encodeLatin1(screen, encoded_screen, sizeof(encoded_screen));
+    const WordMetrics metrics = measureWord(display_.get(), encoded_screen);
+    cycle_duration_ms += screenDuration(metrics.width);
+    ++screen_count;
+  }
+  if (cycle_duration_ms == 0) return;
+
+  uint32_t phase_ms = elapsed_ms % cycle_duration_ms;
+  for (const char* screen : preset.matrix_screens) {
+    if (screen == nullptr) break;
+    rr::encodeLatin1(screen, encoded_screen, sizeof(encoded_screen));
+    const WordMetrics metrics = measureWord(display_.get(), encoded_screen);
+    const uint32_t duration_ms = screenDuration(metrics.width);
+    if (phase_ms >= duration_ms) {
+      phase_ms -= duration_ms;
+      continue;
+    }
+
+    int16_t x = 0;
+    if (metrics.width <= kDisplayWidth) {
+      // A single fitting screen is steady. Gaps are only useful as a visual
+      // separator while advancing through multiple screens.
+      if (screen_count > 1 && phase_ms >= kWordHoldMs) return;
+      x = (static_cast<int16_t>(kDisplayWidth) - metrics.width) / 2;
+    } else {
+      const uint32_t scroll_duration_ms =
+          (static_cast<uint32_t>(metrics.width) + kDisplayWidth) *
+          kScrollStepMs;
+      if (phase_ms >= scroll_duration_ms) return;
+      x = static_cast<int16_t>(kDisplayWidth) -
+          static_cast<int16_t>(phase_ms / kScrollStepMs);
+    }
+    drawWord(display_.get(), encoded_screen, x, metrics, color);
     return;
   }
-  const int16_t x = std::max<int16_t>(0, (kPanelWidth - width) / 2);
-  const int16_t y = std::max<int16_t>(0, (kPanelHeight - height) / 2);
-  display_->setCursor(x, y);
-  display_->setTextColor(color);
-  display_->print(text);
 }
 
 uint16_t MatrixRenderer::colorWheel(uint8_t position) const {
