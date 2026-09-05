@@ -76,6 +76,7 @@ void RearApp::loop() {
       remainingDuration(now_ms, active_started_ms_, active_duration_ms_) == 0) {
     clearDisplay();
     sendStatus(++transmit_sequence_, now_ms);
+    last_status_ms_ = now_ms;
   }
 
   renderer_.tick(now_ms);
@@ -136,11 +137,13 @@ void RearApp::handlePacket(const Packet& packet, uint32_t now_ms) {
              !isValidBrightness(packet.brightness_percent)) {
     result = AckResult::InvalidBrightness;
   } else if (packet.type == PacketType::SetBrightness) {
-    brightness_percent_ = packet.brightness_percent;
-    renderer_.setBrightness(brightness_percent_);
-    brightness_save_pending_ = true;
-    brightness_save_due_ms_ = now_ms + kBrightnessSaveDelayMs;
-  } else {
+    if (brightness_percent_ != packet.brightness_percent) {
+      brightness_percent_ = packet.brightness_percent;
+      renderer_.setBrightness(brightness_percent_);
+      brightness_save_pending_ = true;
+      brightness_save_due_ms_ = now_ms + kBrightnessSaveDelayMs;
+    }
+  } else if (flipped_ != packet.flipped) {
     flipped_ = packet.flipped;
     renderer_.setFlipped(flipped_);
     flip_save_pending_ = true;

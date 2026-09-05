@@ -15,6 +15,6 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19
       - name: Run native tests
-        run: pio test -e native
+        run: pio test -e native -e native_controller -e native_rear
       - name: Build firmware
         run: pio run -e controller -e rear_display

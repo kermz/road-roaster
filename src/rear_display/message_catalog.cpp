@@ -3,46 +3,12 @@
 #include <cstring>
 
 #include "rr/text_encoding.hpp"
+#include "config/presentation.hpp"
 
 namespace rr::rear {
 namespace {
 
-constexpr PresetDefinition kPresets[] = {
-    {1, "Sell it", {{"SELL IT"}}, AnimationKind::ColorCycle, {255, 255, 255},
-     kDefaultDurationMs},
-    {2, "Thanks", {{"Thanks", "Aitäh"}}, AnimationKind::Static, {255, 0, 0},
-     kDefaultDurationMs},
-    {3, "Sorry", {{"Sorry", "Vabandust"}}, AnimationKind::Static,
-     {50, 220, 255},
-     kDefaultDurationMs},
-    {4, "Wanna race?", {{"You seem fast", "prove it"}},
-     AnimationKind::Static, {255, 255, 255},
-     kDefaultDurationMs},
-    {5, "Koer oled?", {{"KOER OLED?", "HOIA PIKIVAHET"}},
-     AnimationKind::Static, {100, 255, 120},
-     kDefaultDurationMs},
-    {6, "Maantee tont", {{"REASTU KAUGEMAL", "TONT"}},
-     AnimationKind::Static, {255, 80, 80},
-     kDefaultDurationMs},
-    {7, "Reguleeri tulesi", {{"Reguleeri", "esitulesi!"}},
-     AnimationKind::Static, {255, 255, 255},
-     kDefaultDurationMs},
-    {8, "Turvaline mooduda", {{"<- Sõida mööda!"}},
-     AnimationKind::ColorCycle, {255, 255, 255},
-     kDefaultDurationMs},
-    {9, "Nice car", {{"Nice car", "Äge auto"}}, AnimationKind::Static,
-     {255, 220, 40},
-     kDefaultDurationMs},
-    {10, "Message 10", {{"MESSAGE 10"}}, AnimationKind::Pulse,
-     {80, 180, 255},
-     kDefaultDurationMs},
-    {11, "Message 11", {{"MESSAGE 11"}}, AnimationKind::Static,
-     {255, 120, 40},
-     kDefaultDurationMs},
-    {12, "Message 12", {{"MESSAGE 12"}}, AnimationKind::ColorCycle,
-     {255, 255, 255},
-     kDefaultDurationMs},
-};
+using presentation::matrix::kPresets;
 
 uint32_t fnvByte(uint32_t hash, uint8_t value) {
   return (hash ^ value) * 16777619UL;
@@ -81,9 +47,13 @@ const PresetDefinition* findPreset(uint16_t id) {
 }
 
 bool validateCatalog() {
-  if (presetCount() == 0 || presetCount() > kMaxCatalogEntries) return false;
-  for (size_t index = 0; index < presetCount(); ++index) {
-    const auto& candidate = kPresets[index];
+  return validateCatalog(kPresets, presetCount());
+}
+
+bool validateCatalog(const PresetDefinition* definitions, size_t count) {
+  if (definitions == nullptr || count == 0 || count > kMaxCatalogEntries) return false;
+  for (size_t index = 0; index < count; ++index) {
+    const auto& candidate = definitions[index];
     const bool known_animation =
         candidate.animation == AnimationKind::Static ||
         candidate.animation == AnimationKind::Pulse ||
@@ -108,8 +78,8 @@ bool validateCatalog() {
         return false;
       }
     }
-    for (size_t other = index + 1; other < presetCount(); ++other) {
-      if (candidate.id == kPresets[other].id) return false;
+    for (size_t other = index + 1; other < count; ++other) {
+      if (candidate.id == definitions[other].id) return false;
     }
   }
   return true;
@@ -117,6 +87,15 @@ bool validateCatalog() {
 
 uint32_t catalogRevision() {
   uint32_t hash = 2166136261UL;
+  // Cycle colors are rear-owned presentation data too. Include them so changing
+  // the shared palette follows the same resynchronization path as preset RGB.
+  for (const auto color : {presentation::matrix::kCycleGreen,
+                           presentation::matrix::kCycleRed,
+                           presentation::matrix::kCycleBlue}) {
+    hash = fnvByte(hash, color.red);
+    hash = fnvByte(hash, color.green);
+    hash = fnvByte(hash, color.blue);
+  }
   for (const auto& preset : kPresets) {
     hash = fnvU16(hash, preset.id);
     hash = fnvString(hash, preset.label);

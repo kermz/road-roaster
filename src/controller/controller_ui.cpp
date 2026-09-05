@@ -1,21 +1,16 @@
 #include "controller_ui.hpp"
 
+#include "config/presentation.hpp"
+
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
 
 namespace rr::controller {
+namespace theme = presentation::theme;
+namespace copy = presentation::text;
 namespace {
 
-constexpr uint32_t kBlack = 0x050708;
-constexpr uint32_t kSurface = 0x111619;
-constexpr uint32_t kSurfacePressed = 0x19231F;
-constexpr uint32_t kDivider = 0x283236;
-constexpr uint32_t kWhite = 0xF7FAF8;
-constexpr uint32_t kMuted = 0x7E8985;
-constexpr uint32_t kGreen = 0x59E391;
-constexpr uint32_t kAmber = 0xF2AD49;
-constexpr uint32_t kRed = 0xFF5C5C;
 constexpr int16_t kGridX = 34;
 constexpr int16_t kGridY = 91;
 constexpr int16_t kGridWidth = 292;
@@ -48,17 +43,17 @@ void makeLabelPlain(lv_obj_t* label, const lv_font_t* font,
 
 void configureAction(lv_obj_t* object) {
   lv_obj_remove_style_all(object);
-  lv_obj_set_style_bg_color(object, lv_color_hex(kSurface), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(object, lv_color_hex(theme::kSurface), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(object, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(object, lv_color_hex(kSurfacePressed),
+  lv_obj_set_style_bg_color(object, lv_color_hex(theme::kSurfacePressed),
                             kPressedSelector);
   lv_obj_set_style_bg_opa(object, LV_OPA_COVER, kPressedSelector);
-  lv_obj_set_style_border_color(object, lv_color_hex(kDivider), LV_PART_MAIN);
-  lv_obj_set_style_border_color(object, lv_color_hex(kGreen),
+  lv_obj_set_style_border_color(object, lv_color_hex(theme::kDivider), LV_PART_MAIN);
+  lv_obj_set_style_border_color(object, lv_color_hex(theme::kAccent),
                                 kPressedSelector);
   lv_obj_set_style_border_width(object, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(object, 18, LV_PART_MAIN);
-  lv_obj_set_style_text_color(object, lv_color_hex(kWhite), LV_PART_MAIN);
+  lv_obj_set_style_text_color(object, lv_color_hex(theme::kTextPrimary), LV_PART_MAIN);
   lv_obj_set_style_opa(object, LV_OPA_30, kDisabledSelector);
   lv_obj_clear_flag(object, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(object, LV_OBJ_FLAG_CLICKABLE);
@@ -88,9 +83,9 @@ ModalLayers createModal(lv_obj_t* parent) {
   lv_obj_set_size(modal.card, kModalWidth, kModalHeight);
   lv_obj_set_align(modal.card, LV_ALIGN_TOP_LEFT);
   lv_obj_set_pos(modal.card, kModalX, kModalRestY);
-  lv_obj_set_style_bg_color(modal.card, lv_color_hex(0x0D1315), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(modal.card, lv_color_hex(theme::kModalSurface), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(modal.card, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_border_color(modal.card, lv_color_hex(kDivider),
+  lv_obj_set_style_border_color(modal.card, lv_color_hex(theme::kDivider),
                                 LV_PART_MAIN);
   lv_obj_set_style_border_width(modal.card, 2, LV_PART_MAIN);
   lv_obj_set_style_radius(modal.card, 30, LV_PART_MAIN);
@@ -103,7 +98,7 @@ ModalLayers createModal(lv_obj_t* parent) {
 lv_obj_t* createModalTitle(lv_obj_t* card, const char* text) {
   lv_obj_t* title = lv_label_create(card);
   lv_label_set_text(title, text);
-  makeLabelPlain(title, &lv_font_montserrat_14, kMuted);
+  makeLabelPlain(title, &lv_font_montserrat_14, theme::kTextMuted);
   lv_obj_set_style_text_letter_space(title, 2, LV_PART_MAIN);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 18);
   return title;
@@ -111,12 +106,12 @@ lv_obj_t* createModalTitle(lv_obj_t* card, const char* text) {
 
 void configureModalButton(lv_obj_t* button, bool primary) {
   lv_obj_set_style_bg_color(
-      button, lv_color_hex(primary ? 0x17603A : kSurface), LV_PART_MAIN);
+      button, lv_color_hex(primary ? theme::kPrimaryAction : theme::kSurface), LV_PART_MAIN);
   lv_obj_set_style_bg_color(
-      button, lv_color_hex(primary ? 0x20794A : kSurfacePressed),
+      button, lv_color_hex(primary ? theme::kPrimaryActionPressed : theme::kSurfacePressed),
       kPressedSelector);
   lv_obj_set_style_border_color(
-      button, lv_color_hex(primary ? kGreen : kDivider), LV_PART_MAIN);
+      button, lv_color_hex(primary ? theme::kAccent : theme::kDivider), LV_PART_MAIN);
   lv_obj_set_style_border_width(button, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(button, 19, LV_PART_MAIN);
   lv_obj_set_style_shadow_width(button, 0, LV_PART_MAIN);
@@ -153,13 +148,13 @@ void ControllerUi::begin(DisplayCallback display_callback,
   callback_context_ = callback_context;
 
   lv_obj_t* screen = lv_scr_act();
-  lv_obj_set_style_bg_color(screen, lv_color_hex(kBlack), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(screen, lv_color_hex(theme::kBackground), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* brand = lv_label_create(screen);
-  lv_label_set_text(brand, "ROAD ROASTER");
-  makeLabelPlain(brand, &lv_font_montserrat_14, kWhite);
+  lv_label_set_text(brand, copy::kBrand);
+  makeLabelPlain(brand, &lv_font_montserrat_14, theme::kTextPrimary);
   lv_obj_set_style_text_letter_space(brand, 3, LV_PART_MAIN);
   lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 18);
   lv_obj_add_flag(brand, LV_OBJ_FLAG_CLICKABLE);
@@ -169,7 +164,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
   lv_obj_t* brand_mark = lv_obj_create(screen);
   lv_obj_remove_style_all(brand_mark);
   lv_obj_set_size(brand_mark, 26, 2);
-  lv_obj_set_style_bg_color(brand_mark, lv_color_hex(kGreen), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(brand_mark, lv_color_hex(theme::kAccent), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(brand_mark, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_radius(brand_mark, 1, LV_PART_MAIN);
   lv_obj_align(brand_mark, LV_ALIGN_TOP_MID, 0, 39);
@@ -177,10 +172,10 @@ void ControllerUi::begin(DisplayCallback display_callback,
   status_panel_ = lv_obj_create(screen);
   lv_obj_remove_style_all(status_panel_);
   lv_obj_set_size(status_panel_, 238, 32);
-  lv_obj_set_style_bg_color(status_panel_, lv_color_hex(kSurface),
+  lv_obj_set_style_bg_color(status_panel_, lv_color_hex(theme::kSurface),
                             LV_PART_MAIN);
   lv_obj_set_style_bg_opa(status_panel_, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_border_color(status_panel_, lv_color_hex(kDivider),
+  lv_obj_set_style_border_color(status_panel_, lv_color_hex(theme::kDivider),
                                 LV_PART_MAIN);
   lv_obj_set_style_border_width(status_panel_, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(status_panel_, 16, LV_PART_MAIN);
@@ -190,13 +185,13 @@ void ControllerUi::begin(DisplayCallback display_callback,
   status_dot_ = lv_obj_create(status_panel_);
   lv_obj_remove_style_all(status_dot_);
   lv_obj_set_size(status_dot_, 8, 8);
-  lv_obj_set_style_bg_color(status_dot_, lv_color_hex(kAmber), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(status_dot_, lv_color_hex(theme::kWarning), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(status_dot_, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_radius(status_dot_, 4, LV_PART_MAIN);
   lv_obj_align(status_dot_, LV_ALIGN_LEFT_MID, 13, 0);
 
   status_label_ = lv_label_create(status_panel_);
-  makeLabelPlain(status_label_, &lv_font_montserrat_14, kWhite);
+  makeLabelPlain(status_label_, &lv_font_montserrat_14, theme::kTextPrimary);
   lv_obj_set_size(status_label_, 198, 20);
   lv_label_set_long_mode(status_label_, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER,
@@ -225,7 +220,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
                         &slot_contexts_[index]);
 
     slot_labels_[index] = lv_label_create(slots_[index]);
-    makeLabelPlain(slot_labels_[index], &lv_font_montserrat_22, kWhite);
+    makeLabelPlain(slot_labels_[index], &lv_font_montserrat_22, theme::kTextPrimary);
     lv_label_set_long_mode(slot_labels_[index], LV_LABEL_LONG_WRAP);
     lv_obj_set_width(slot_labels_[index], 116);
     lv_obj_set_style_text_align(slot_labels_[index], LV_TEXT_ALIGN_CENTER,
@@ -233,18 +228,18 @@ void ControllerUi::begin(DisplayCallback display_callback,
     lv_obj_align(slot_labels_[index], LV_ALIGN_CENTER, 0, 7);
 
     slot_index_labels_[index] = lv_label_create(slots_[index]);
-    makeLabelPlain(slot_index_labels_[index], &lv_font_montserrat_14, kMuted);
+    makeLabelPlain(slot_index_labels_[index], &lv_font_montserrat_14, theme::kTextMuted);
     lv_obj_align(slot_index_labels_[index], LV_ALIGN_TOP_LEFT, 3, 1);
   }
 
   page_label_ = lv_label_create(screen);
-  makeLabelPlain(page_label_, &lv_font_montserrat_18, kMuted);
+  makeLabelPlain(page_label_, &lv_font_montserrat_18, theme::kTextMuted);
   lv_obj_set_style_text_letter_space(page_label_, 1, LV_PART_MAIN);
   lv_obj_align(page_label_, LV_ALIGN_BOTTOM_MID, -58, -45);
 
   battery_label_ = lv_label_create(screen);
-  lv_label_set_text(battery_label_, "--%");
-  makeLabelPlain(battery_label_, &lv_font_montserrat_14, kMuted);
+  lv_label_set_text(battery_label_, copy::kBatteryUnavailable);
+  makeLabelPlain(battery_label_, &lv_font_montserrat_14, theme::kTextMuted);
   lv_obj_set_style_text_opa(battery_label_, LV_OPA_50, LV_PART_MAIN);
   lv_obj_set_width(battery_label_, 64);
   lv_obj_set_style_text_align(battery_label_, LV_TEXT_ALIGN_CENTER,
@@ -254,18 +249,18 @@ void ControllerUi::begin(DisplayCallback display_callback,
   clear_button_ = lv_btn_create(screen);
   lv_obj_set_size(clear_button_, 82, 36);
   lv_obj_align(clear_button_, LV_ALIGN_BOTTOM_MID, 64, -39);
-  lv_obj_set_style_bg_color(clear_button_, lv_color_hex(kBlack), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(clear_button_, lv_color_hex(0x361719),
+  lv_obj_set_style_bg_color(clear_button_, lv_color_hex(theme::kBackground), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(clear_button_, lv_color_hex(theme::kDestructivePressed),
                             kPressedSelector);
-  lv_obj_set_style_border_color(clear_button_, lv_color_hex(kRed),
+  lv_obj_set_style_border_color(clear_button_, lv_color_hex(theme::kError),
                                 LV_PART_MAIN);
   lv_obj_set_style_border_width(clear_button_, 1, LV_PART_MAIN);
   lv_obj_set_style_radius(clear_button_, 18, LV_PART_MAIN);
   lv_obj_set_style_shadow_width(clear_button_, 0, LV_PART_MAIN);
   lv_obj_add_event_cb(clear_button_, clearEvent, LV_EVENT_SHORT_CLICKED, this);
   lv_obj_t* clear_label = lv_label_create(clear_button_);
-  lv_label_set_text(clear_label, "Clear");
-  makeLabelPlain(clear_label, &lv_font_montserrat_14, kRed);
+  lv_label_set_text(clear_label, copy::kClear);
+  makeLabelPlain(clear_label, &lv_font_montserrat_14, theme::kError);
   lv_obj_center(clear_label);
   lv_obj_add_flag(clear_button_, LV_OBJ_FLAG_HIDDEN);
 
@@ -273,10 +268,10 @@ void ControllerUi::begin(DisplayCallback display_callback,
   duration_overlay_ = duration_modal.overlay;
   duration_card_ = duration_modal.card;
   lv_obj_t* duration_card = duration_card_;
-  createModalTitle(duration_card, "DURATION");
+  createModalTitle(duration_card, copy::kDurationTitle);
 
   duration_message_ = lv_label_create(duration_card);
-  makeLabelPlain(duration_message_, &lv_font_montserrat_18, kWhite);
+  makeLabelPlain(duration_message_, &lv_font_montserrat_18, theme::kTextPrimary);
   lv_obj_set_width(duration_message_, 202);
   lv_label_set_long_mode(duration_message_, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(duration_message_, LV_TEXT_ALIGN_CENTER,
@@ -289,10 +284,10 @@ void ControllerUi::begin(DisplayCallback display_callback,
   lv_arc_set_bg_angles(duration_arc_, 0, 270);
   lv_arc_set_range(duration_arc_, 0, 12);
   lv_arc_set_value(duration_arc_, 0);
-  lv_obj_set_style_arc_color(duration_arc_, lv_color_hex(kDivider),
+  lv_obj_set_style_arc_color(duration_arc_, lv_color_hex(theme::kDivider),
                              LV_PART_MAIN);
   lv_obj_set_style_arc_width(duration_arc_, 5, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(duration_arc_, lv_color_hex(kGreen),
+  lv_obj_set_style_arc_color(duration_arc_, lv_color_hex(theme::kAccent),
                              LV_PART_INDICATOR);
   lv_obj_set_style_arc_width(duration_arc_, 5, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(duration_arc_, LV_OPA_TRANSP, LV_PART_KNOB);
@@ -300,7 +295,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
   lv_obj_align(duration_arc_, LV_ALIGN_CENTER, 0, 2);
 
   duration_value_ = lv_label_create(duration_card);
-  makeLabelPlain(duration_value_, &lv_font_montserrat_28, kWhite);
+  makeLabelPlain(duration_value_, &lv_font_montserrat_28, theme::kTextPrimary);
   lv_obj_set_width(duration_value_, 112);
   lv_obj_set_style_text_align(duration_value_, LV_TEXT_ALIGN_CENTER,
                               LV_PART_MAIN);
@@ -312,8 +307,8 @@ void ControllerUi::begin(DisplayCallback display_callback,
   configureModalButton(cancel, false);
   lv_obj_add_event_cb(cancel, cancelEvent, LV_EVENT_SHORT_CLICKED, this);
   lv_obj_t* cancel_label = lv_label_create(cancel);
-  lv_label_set_text(cancel_label, "Cancel");
-  makeLabelPlain(cancel_label, &lv_font_montserrat_14, kWhite);
+  lv_label_set_text(cancel_label, copy::kCancel);
+  makeLabelPlain(cancel_label, &lv_font_montserrat_14, theme::kTextPrimary);
   lv_obj_center(cancel_label);
 
   lv_obj_t* confirm = lv_btn_create(duration_card);
@@ -322,8 +317,8 @@ void ControllerUi::begin(DisplayCallback display_callback,
   configureModalButton(confirm, true);
   lv_obj_add_event_cb(confirm, confirmEvent, LV_EVENT_SHORT_CLICKED, this);
   lv_obj_t* confirm_label = lv_label_create(confirm);
-  lv_label_set_text(confirm_label, "Save");
-  makeLabelPlain(confirm_label, &lv_font_montserrat_14, kWhite);
+  lv_label_set_text(confirm_label, copy::kSave);
+  makeLabelPlain(confirm_label, &lv_font_montserrat_14, theme::kTextPrimary);
   lv_obj_center(confirm_label);
   lv_obj_add_flag(duration_card_, LV_OBJ_FLAG_HIDDEN);
 
@@ -331,19 +326,19 @@ void ControllerUi::begin(DisplayCallback display_callback,
   settings_panel_ = settings_modal.overlay;
   settings_card_ = settings_modal.card;
   lv_obj_t* settings_card = settings_card_;
-  createModalTitle(settings_card, "DISPLAY");
+  createModalTitle(settings_card, copy::kDisplayTitle);
 
-  const char* brightness_names[] = {"CONTROLLER", "REAR DISPLAY"};
+  const char* brightness_names[] = {copy::kController, copy::kRearDisplay};
   const int16_t label_y[] = {48, 128};
   for (uint8_t index = 0; index < 2; ++index) {
     brightness_name_labels_[index] = lv_label_create(settings_card);
     lv_label_set_text(brightness_name_labels_[index], brightness_names[index]);
     makeLabelPlain(brightness_name_labels_[index], &lv_font_montserrat_14,
-                   kWhite);
+                   theme::kTextPrimary);
     lv_obj_set_pos(brightness_name_labels_[index], 26, label_y[index]);
 
     brightness_values_[index] = lv_label_create(settings_card);
-    makeLabelPlain(brightness_values_[index], &lv_font_montserrat_14, kGreen);
+    makeLabelPlain(brightness_values_[index], &lv_font_montserrat_14, theme::kAccent);
     lv_obj_set_width(brightness_values_[index], 54);
     lv_obj_set_style_text_align(brightness_values_[index], LV_TEXT_ALIGN_RIGHT,
                                 LV_PART_MAIN);
@@ -355,21 +350,21 @@ void ControllerUi::begin(DisplayCallback display_callback,
     lv_slider_set_range(brightness_sliders_[index], kMinBrightnessPercent,
                         kMaxBrightnessPercent);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kDivider), LV_PART_MAIN);
+                              lv_color_hex(theme::kDivider), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(brightness_sliders_[index], LV_OPA_COVER,
                             LV_PART_MAIN);
     lv_obj_set_style_radius(brightness_sliders_[index], 4, LV_PART_MAIN);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kGreen), LV_PART_INDICATOR);
+                              lv_color_hex(theme::kAccent), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kWhite), LV_PART_KNOB);
+                              lv_color_hex(theme::kTextPrimary), LV_PART_KNOB);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kMuted), kDisabledSelector);
+                              lv_color_hex(theme::kTextMuted), kDisabledSelector);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kMuted),
+                              lv_color_hex(theme::kTextMuted),
                               kIndicatorDisabledSelector);
     lv_obj_set_style_bg_color(brightness_sliders_[index],
-                              lv_color_hex(kMuted), kKnobDisabledSelector);
+                              lv_color_hex(theme::kTextMuted), kKnobDisabledSelector);
     lv_obj_set_style_opa(brightness_sliders_[index], LV_OPA_50,
                          kDisabledSelector);
     lv_obj_set_style_opa(brightness_sliders_[index], LV_OPA_50,
@@ -383,16 +378,16 @@ void ControllerUi::begin(DisplayCallback display_callback,
                         LV_EVENT_VALUE_CHANGED, this);
 
     lv_obj_t* flip_label = lv_label_create(settings_card);
-    lv_label_set_text(flip_label, "FLIP");
-    makeLabelPlain(flip_label, &lv_font_montserrat_14, kMuted);
+    lv_label_set_text(flip_label, copy::kFlip);
+    makeLabelPlain(flip_label, &lv_font_montserrat_14, theme::kTextMuted);
     lv_obj_set_pos(flip_label, 26, label_y[index] + 56);
 
     flip_switches_[index] = lv_switch_create(settings_card);
     lv_obj_set_size(flip_switches_[index], 44, 22);
     lv_obj_set_pos(flip_switches_[index], 180, label_y[index] + 52);
-    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kDivider),
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(theme::kDivider),
                               LV_PART_MAIN);
-    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kGreen),
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(theme::kAccent),
                               static_cast<lv_style_selector_t>(
                                   LV_PART_INDICATOR) |
                                   LV_STATE_CHECKED);
@@ -400,7 +395,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
                             static_cast<lv_style_selector_t>(
                                 LV_PART_INDICATOR) |
                                 LV_STATE_CHECKED);
-    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(kWhite),
+    lv_obj_set_style_bg_color(flip_switches_[index], lv_color_hex(theme::kTextPrimary),
                               LV_PART_KNOB);
     lv_obj_set_style_opa(flip_switches_[index], LV_OPA_50,
                          kDisabledSelector);
@@ -419,8 +414,8 @@ void ControllerUi::begin(DisplayCallback display_callback,
   lv_obj_add_event_cb(settings_back, settingsBackEvent, LV_EVENT_SHORT_CLICKED,
                       this);
   lv_obj_t* back_label = lv_label_create(settings_back);
-  lv_label_set_text(back_label, "Back");
-  makeLabelPlain(back_label, &lv_font_montserrat_14, kWhite);
+  lv_label_set_text(back_label, copy::kBack);
+  makeLabelPlain(back_label, &lv_font_montserrat_14, theme::kTextPrimary);
   lv_obj_center(back_label);
   lv_obj_add_flag(settings_card_, LV_OBJ_FLAG_HIDDEN);
 
@@ -434,6 +429,7 @@ void ControllerUi::begin(DisplayCallback display_callback,
 }
 
 void ControllerUi::setCatalog(const CatalogStore* catalog) {
+  closeDurationPicker();
   catalog_ = catalog;
   if (catalog_ == nullptr || catalog_->pageCount() == 0) {
     current_page_ = 0;
@@ -441,6 +437,12 @@ void ControllerUi::setCatalog(const CatalogStore* catalog) {
     current_page_ = 0;
   }
   renderPage();
+}
+
+void ControllerUi::setRadioActionsAvailable(bool available) {
+  if (radio_actions_available_ == available) return;
+  radio_actions_available_ = available;
+  refreshAvailability();
 }
 
 void ControllerUi::setDisplaySettings(uint8_t controller_percent,
@@ -478,8 +480,8 @@ void ControllerUi::setDisplaySettings(uint8_t controller_percent,
     lv_obj_add_state(brightness_sliders_[1], LV_STATE_DISABLED);
     lv_obj_add_state(flip_switches_[1], LV_STATE_DISABLED);
   }
-  const uint32_t rear_color = rear_available ? kWhite : kMuted;
-  const uint32_t rear_value_color = rear_available ? kGreen : kMuted;
+  const uint32_t rear_color = rear_available ? theme::kTextPrimary : theme::kTextMuted;
+  const uint32_t rear_value_color = rear_available ? theme::kAccent : theme::kTextMuted;
   lv_obj_set_style_text_color(brightness_name_labels_[1],
                               lv_color_hex(rear_color), LV_PART_MAIN);
   lv_obj_set_style_text_color(brightness_values_[1],
@@ -490,11 +492,13 @@ void ControllerUi::setDisplaySettings(uint8_t controller_percent,
 
 void ControllerUi::setBatteryPercent(uint8_t percent, bool available) {
   if (battery_label_ == nullptr) return;
-  char text[8];
+  char text[12 + sizeof(copy::kPercentSuffix) +
+            sizeof(copy::kBatteryUnavailable)];
   if (available) {
-    std::snprintf(text, sizeof(text), "%u%%", std::min<uint8_t>(percent, 100));
+    std::snprintf(text, sizeof(text), "%u%s", static_cast<unsigned>(std::min<uint8_t>(percent, 100)),
+                  copy::kPercentSuffix);
   } else {
-    std::snprintf(text, sizeof(text), "--%%");
+    std::snprintf(text, sizeof(text), "%s", copy::kBatteryUnavailable);
   }
   if (std::strcmp(lv_label_get_text(battery_label_), text) != 0) {
     lv_label_set_text(battery_label_, text);
@@ -516,12 +520,12 @@ void ControllerUi::rotate(int delta) {
   if (settings_open_) {
     lv_obj_t* slider = brightness_sliders_[settings_focus_];
     if (lv_obj_has_state(slider, LV_STATE_DISABLED)) return;
-    const int value = std::clamp<int>(
+    const int value = static_cast<int>(std::clamp<int64_t>(
         lv_slider_get_value(slider) +
-            (delta > 0 ? kBrightnessStepPercent : -kBrightnessStepPercent),
-        kMinBrightnessPercent, kMaxBrightnessPercent);
+            static_cast<int64_t>(delta) * kBrightnessStepPercent,
+        kMinBrightnessPercent, kMaxBrightnessPercent));
     slider_update_guard_ = true;
-    lv_slider_set_value(slider, value, LV_ANIM_ON);
+    lv_slider_set_value(slider, value, LV_ANIM_OFF);
     slider_update_guard_ = false;
     refreshBrightnessLabels();
     if (brightness_callback_ != nullptr) {
@@ -568,7 +572,8 @@ void ControllerUi::showRearState(const RearState& state,
 
 void ControllerUi::applyViewState(ViewState state) {
   view_state_ = state;
-  if (state == ViewState::Unavailable || state == ViewState::SetupRequired ||
+  if (state == ViewState::Syncing || state == ViewState::Unavailable ||
+      state == ViewState::SetupRequired ||
       state == ViewState::RadioFailure) {
     closeDurationPicker();
   }
@@ -577,34 +582,36 @@ void ControllerUi::applyViewState(ViewState state) {
 }
 
 void ControllerUi::refreshStatus() {
-  uint32_t color = kMuted;
+  uint32_t color = theme::kTextMuted;
   bool show_dot = true;
   const char* status_text = "";
-  char active_text[72]{};
+  char active_text[kMaxLabelBytes + sizeof(copy::kUnknown) +
+                   sizeof(copy::kStatusSeparator) + 10 +
+                   sizeof(copy::kSecondsSuffix)]{};
   switch (view_state_) {
     case ViewState::Syncing:
-      status_text = "Syncing messages";
-      color = kAmber;
+      status_text = copy::kSyncing;
+      color = theme::kWarning;
       break;
     case ViewState::SetupRequired:
-      status_text = "Radio setup required";
-      color = kRed;
+      status_text = copy::kSetupRequired;
+      color = theme::kError;
       break;
     case ViewState::RadioFailure:
-      status_text = "Radio initialization failed";
-      color = kRed;
+      status_text = copy::kRadioFailure;
+      color = theme::kError;
       break;
     case ViewState::Unavailable:
-      status_text = "Rear unavailable";
-      color = kRed;
+      status_text = copy::kRearUnavailable;
+      color = theme::kError;
       break;
     case ViewState::Sending:
-      status_text = "Sending";
-      color = kAmber;
+      status_text = copy::kSending;
+      color = theme::kWarning;
       break;
     case ViewState::Failed:
-      status_text = "Command failed";
-      color = kRed;
+      status_text = copy::kCommandFailed;
+      color = theme::kError;
       break;
     case ViewState::Blank:
       show_dot = false;
@@ -612,13 +619,13 @@ void ControllerUi::refreshStatus() {
     case ViewState::Active: {
       const CatalogEntrySummary* entry =
           catalog_ == nullptr ? nullptr : catalog_->findById(rear_state_.preset_id);
-      const char* label = entry == nullptr ? "Unknown" : entry->label.data();
+      const char* label = entry == nullptr ? copy::kUnknown : entry->label.data();
       std::snprintf(active_text, sizeof(active_text),
-                    "%s " LV_SYMBOL_BULLET " %lus",
-                    label, static_cast<unsigned long>(
-                               displayed_remaining_seconds_));
+                    "%s%s%lu%s", label, copy::kStatusSeparator,
+                    static_cast<unsigned long>(displayed_remaining_seconds_),
+                    copy::kSecondsSuffix);
       status_text = active_text;
-      color = kGreen;
+      color = theme::kAccent;
       break;
     }
   }
@@ -656,8 +663,9 @@ void ControllerUi::refreshStatus() {
 
 void ControllerUi::refreshAvailability() {
   const bool radio_action_available =
+      radio_actions_available_ &&
       (view_state_ == ViewState::Blank || view_state_ == ViewState::Active ||
-       view_state_ == ViewState::Sending || view_state_ == ViewState::Failed) &&
+       view_state_ == ViewState::Failed) &&
       catalog_ != nullptr && catalog_->complete();
   for (uint8_t index = 0; index < kMessagesPerPage; ++index) {
     const bool should_enable =
@@ -692,16 +700,17 @@ void ControllerUi::renderPage(int direction) {
                       entry == nullptr ? "" : entry->label.data());
     char item_number[4];
     std::snprintf(item_number, sizeof(item_number), "%02u",
-                  current_page_ * kMessagesPerPage + index + 1);
+                  static_cast<unsigned>(current_page_ * kMessagesPerPage + index + 1));
     lv_label_set_text(slot_index_labels_[index],
                       entry == nullptr ? "" : item_number);
   }
-  char page_text[16];
+  char page_text[12 + sizeof(copy::kPageSeparator) +
+                 sizeof(copy::kPageUnavailable)];
   if (catalog_ != nullptr && catalog_->complete() && catalog_->pageCount() > 0) {
-    std::snprintf(page_text, sizeof(page_text), "%u / %u", current_page_ + 1,
-                  catalog_->pageCount());
+    std::snprintf(page_text, sizeof(page_text), "%u%s%u", static_cast<unsigned>(current_page_ + 1),
+                  copy::kPageSeparator, static_cast<unsigned>(catalog_->pageCount()));
   } else {
-    std::snprintf(page_text, sizeof(page_text), "- / -");
+    std::snprintf(page_text, sizeof(page_text), "%s", copy::kPageUnavailable);
   }
   lv_label_set_text(page_label_, page_text);
   refreshAvailability();
@@ -729,8 +738,9 @@ void ControllerUi::openDurationPicker(uint8_t slot) {
       lv_obj_has_state(slots_[slot], LV_STATE_DISABLED)) {
     return;
   }
-  duration_slot_ = slot;
   const auto* entry = entryForSlot(slot);
+  duration_preset_id_ = entry->id;
+  duration_catalog_revision_ = catalog_->revision();
   const uint32_t saved_duration =
       duration_lookup_callback_ == nullptr
           ? 0
@@ -740,7 +750,7 @@ void ControllerUi::openDurationPicker(uint8_t slot) {
                          : 0;
   duration_picker_open_ = true;
   lv_label_set_text(duration_message_, entry->label.data());
-  lv_obj_set_style_text_color(duration_message_, lv_color_hex(kWhite),
+  lv_obj_set_style_text_color(duration_message_, lv_color_hex(theme::kTextPrimary),
                               LV_PART_MAIN);
   refreshDurationPicker();
   showModal(duration_overlay_, duration_card_);
@@ -749,6 +759,8 @@ void ControllerUi::openDurationPicker(uint8_t slot) {
 
 void ControllerUi::closeDurationPicker() {
   duration_picker_open_ = false;
+  duration_preset_id_ = 0;
+  duration_catalog_revision_ = 0;
   if (duration_card_ != nullptr) {
     lv_obj_add_flag(duration_card_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(duration_overlay_, LV_OBJ_FLAG_CLICKABLE);
@@ -760,12 +772,13 @@ void ControllerUi::refreshDurationPicker() {
   if (duration_choice_ == 0) {
     lv_obj_set_style_text_font(duration_value_, &lv_font_montserrat_22,
                                LV_PART_MAIN);
-    lv_label_set_text(duration_value_, "Default");
+    lv_label_set_text(duration_value_, copy::kDefaultDuration);
   } else {
     lv_obj_set_style_text_font(duration_value_, &lv_font_montserrat_28,
                                LV_PART_MAIN);
-    char duration[8];
-    std::snprintf(duration, sizeof(duration), "%us", duration_choice_ * 5);
+    char duration[12 + sizeof(copy::kSecondsSuffix)];
+    std::snprintf(duration, sizeof(duration), "%u%s", static_cast<unsigned>(duration_choice_ * 5),
+                  copy::kSecondsSuffix);
     lv_label_set_text(duration_value_, duration);
   }
 }
@@ -805,8 +818,13 @@ void ControllerUi::cancelEvent(lv_event_t* event) {
 
 void ControllerUi::confirmEvent(lv_event_t* event) {
   auto* ui = static_cast<ControllerUi*>(lv_event_get_user_data(event));
-  if (ui == nullptr) return;
-  const auto* entry = ui->entryForSlot(ui->duration_slot_);
+  if (ui == nullptr || !ui->duration_picker_open_) return;
+  if (ui->catalog_ == nullptr || !ui->catalog_->complete() ||
+      ui->catalog_->revision() != ui->duration_catalog_revision_) {
+    ui->closeDurationPicker();
+    return;
+  }
+  const auto* entry = ui->catalog_->findById(ui->duration_preset_id_);
   if (entry != nullptr && ui->duration_save_callback_ != nullptr) {
     const uint32_t duration =
         ui->duration_choice_ == 0 ? 0 : ui->duration_choice_ * 5000UL;
@@ -814,8 +832,8 @@ void ControllerUi::confirmEvent(lv_event_t* event) {
                                     duration)) {
       ui->closeDurationPicker();
     } else {
-      lv_label_set_text(ui->duration_message_, "Save failed - retry");
-      lv_obj_set_style_text_color(ui->duration_message_, lv_color_hex(kRed),
+      lv_label_set_text(ui->duration_message_, copy::kSaveFailed);
+      lv_obj_set_style_text_color(ui->duration_message_, lv_color_hex(theme::kError),
                                   LV_PART_MAIN);
     }
   }
@@ -883,16 +901,17 @@ void ControllerUi::refreshBrightnessLabels() {
   for (uint8_t index = 0; index < 2; ++index) {
     if (index == 1 &&
         lv_obj_has_state(brightness_sliders_[index], LV_STATE_DISABLED)) {
-      if (std::strcmp(lv_label_get_text(brightness_values_[index]), "--") !=
+      if (std::strcmp(lv_label_get_text(brightness_values_[index]), copy::kValueUnavailable) !=
           0) {
-        lv_label_set_text(brightness_values_[index], "--");
+        lv_label_set_text(brightness_values_[index], copy::kValueUnavailable);
       }
       continue;
     }
-    char text[8];
-    std::snprintf(text, sizeof(text), "%d%%",
+    char text[12 + sizeof(copy::kPercentSuffix) +
+            sizeof(copy::kBatteryUnavailable)];
+    std::snprintf(text, sizeof(text), "%d%s",
                   static_cast<int>(lv_slider_get_value(
-                      brightness_sliders_[index])));
+                      brightness_sliders_[index])), copy::kPercentSuffix);
     if (std::strcmp(lv_label_get_text(brightness_values_[index]), text) != 0) {
       lv_label_set_text(brightness_values_[index], text);
     }
@@ -905,7 +924,7 @@ void ControllerUi::setFocusedBrightness(uint8_t focus) {
     const bool disabled =
         lv_obj_has_state(brightness_sliders_[index], LV_STATE_DISABLED);
     lv_obj_set_style_outline_color(brightness_sliders_[index],
-                                   lv_color_hex(kGreen), LV_PART_MAIN);
+                                   lv_color_hex(theme::kAccent), LV_PART_MAIN);
     lv_obj_set_style_outline_width(brightness_sliders_[index],
                                    index == settings_focus_ && !disabled ? 2
                                                                          : 0,

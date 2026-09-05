@@ -98,6 +98,8 @@ void ControllerApp::loop() {
     knob_board::vibrate();
   }
 
+  ui_.setRadioActionsAvailable(!pending_.active() && !sync_in_progress_ &&
+                               rearAvailable(now_ms));
   const int encoder_delta = knob_board::consumeEncoderDelta();
   if (encoder_delta != 0) {
     knob_board::vibrate();
@@ -288,8 +290,12 @@ void ControllerApp::completeCatalogSync() {
   if (have_rear_state_ && rear_state_.catalog_revision == catalog_.revision() &&
       rearAvailable(millis())) {
     ui_.showRearState(rear_state_, millis());
-    desired_rear_brightness_percent_ = rear_state_.brightness_percent;
-    desired_rear_flipped_ = rear_state_.flipped;
+    if (!rear_brightness_dirty_) {
+      desired_rear_brightness_percent_ = rear_state_.brightness_percent;
+    }
+    if (!rear_flip_dirty_) {
+      desired_rear_flipped_ = rear_state_.flipped;
+    }
     refreshDisplaySettings(true);
   } else {
     ui_.showRearUnavailable();
@@ -299,6 +305,7 @@ void ControllerApp::completeCatalogSync() {
 
 void ControllerApp::beginRequest(const Packet& packet, uint32_t now_ms) {
   pending_.begin(packet, now_ms);
+  ui_.setRadioActionsAvailable(false);
   radio_.send(packet);
 }
 
@@ -394,6 +401,9 @@ void ControllerApp::brightnessRequested(void* context, bool rear_display,
                                         uint8_t brightness_percent) {
   auto* app = static_cast<ControllerApp*>(context);
   if (app == nullptr || !isValidBrightness(brightness_percent)) return;
+  if (brightness_percent == (rear_display
+                                  ? app->desired_rear_brightness_percent_
+                                  : app->controller_brightness_percent_)) return;
   knob_board::vibrate();
   if (rear_display) {
     app->desired_rear_brightness_percent_ = brightness_percent;
@@ -411,6 +421,8 @@ void ControllerApp::flipRequested(void* context, bool rear_display,
                                   bool flipped) {
   auto* app = static_cast<ControllerApp*>(context);
   if (app == nullptr) return;
+  if (flipped == (rear_display ? app->desired_rear_flipped_
+                              : app->controller_flipped_)) return;
   knob_board::vibrate();
   if (rear_display) {
     app->desired_rear_flipped_ = flipped;
@@ -432,7 +444,9 @@ uint32_t ControllerApp::durationOverrideRequested(void* context,
 bool ControllerApp::durationOverrideSaved(void* context, uint16_t preset_id,
                                           uint32_t duration_override_ms) {
   auto* app = static_cast<ControllerApp*>(context);
-  if (app == nullptr || !isValidDurationOverride(duration_override_ms)) {
+  if (app == nullptr || app->sync_in_progress_ || !app->catalog_.complete() ||
+      app->catalog_.findById(preset_id) == nullptr || preset_id == 0 ||
+      !isValidDurationOverride(duration_override_ms)) {
     return false;
   }
   const bool saved = app->saveDurationOverride(preset_id, duration_override_ms);

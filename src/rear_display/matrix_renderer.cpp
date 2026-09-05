@@ -4,6 +4,7 @@
 
 #include "rr/text_encoding.hpp"
 #include "spleen_bitmaps.hpp"
+#include "config/presentation.hpp"
 
 namespace rr::rear {
 namespace {
@@ -99,6 +100,7 @@ bool MatrixRenderer::begin(uint8_t brightness_percent, bool flipped) {
 }
 
 void MatrixRenderer::setFlipped(bool flipped) {
+  if (flipped_ != flipped) have_rendered_frame_ = false;
   flipped_ = flipped;
   if (display_) display_->setRotation(flipped ? 2 : 0);
 }
@@ -118,10 +120,33 @@ void MatrixRenderer::show(const PresetDefinition* preset, uint32_t started_ms) {
   preset_ = preset;
   started_ms_ = started_ms;
   last_frame_ms_ = started_ms - kFrameIntervalMs;
+  have_rendered_frame_ = false;
+  screen_count_ = 0;
+  cycle_duration_ms_ = 0;
+  if (preset == nullptr || !display_) return;
+  display_->setTextWrap(false);
+  // Encode and fit once per activation, not on every animation frame.
+  for (const char* text : preset->matrix_screens) {
+    if (text == nullptr) break;
+    auto& screen = screens_[screen_count_++];
+    rr::encodeLatin1(text, screen.text.data(), screen.text.size());
+    const auto metrics = measureWord(display_.get(), screen.text.data());
+    screen.font = metrics.font;
+    screen.x1 = metrics.x1;
+    screen.y1 = metrics.y1;
+    screen.width = metrics.width;
+    screen.height = metrics.height;
+    screen.duration_ms = screen.width <= kDisplayWidth
+        ? kWordHoldMs + kWordGapMs
+        : (static_cast<uint32_t>(screen.width) + kDisplayWidth) *
+              kScrollStepMs + kWordGapMs;
+    cycle_duration_ms_ += screen.duration_ms;
+  }
 }
 
 void MatrixRenderer::clear() {
   preset_ = nullptr;
+  have_rendered_frame_ = false;
   if (!display_) return;
   display_->clearScreen();
   display_->flipDMABuffer();
@@ -139,8 +164,6 @@ void MatrixRenderer::tick(uint32_t now_ms) {
 
 void MatrixRenderer::renderFrame(uint32_t now_ms) {
   const uint32_t elapsed = now_ms - started_ms_;
-  display_->clearScreen();
-  display_->setTextWrap(false);
 
   uint16_t color = display_->color565(preset_->color.red, preset_->color.green,
                                       preset_->color.blue);
@@ -161,70 +184,68 @@ void MatrixRenderer::renderFrame(uint32_t now_ms) {
       break;
   }
   drawScreenSequence(*preset_, color, elapsed);
-  display_->flipDMABuffer();
 }
 
-void MatrixRenderer::drawScreenSequence(const PresetDefinition& preset,
+void MatrixRenderer::drawScreenSequence(const PresetDefinition&,
                                         uint16_t color,
                                         uint32_t elapsed_ms) {
-  auto screenDuration = [](uint16_t width) -> uint32_t {
-    if (width <= kDisplayWidth) return kWordHoldMs + kWordGapMs;
-    return (static_cast<uint32_t>(width) + kDisplayWidth) * kScrollStepMs +
-           kWordGapMs;
-  };
-
-  char encoded_screen[kMaxMatrixTextBytes + 1]{};
-  uint32_t cycle_duration_ms = 0;
-  size_t screen_count = 0;
-  for (const char* screen : preset.matrix_screens) {
-    if (screen == nullptr) break;
-    rr::encodeLatin1(screen, encoded_screen, sizeof(encoded_screen));
-    const WordMetrics metrics = measureWord(display_.get(), encoded_screen);
-    cycle_duration_ms += screenDuration(metrics.width);
-    ++screen_count;
+  if (cycle_duration_ms_ == 0) return;
+  uint32_t phase_ms = elapsed_ms % cycle_duration_ms_;
+  uint8_t index = 0;
+  while (index + 1 < screen_count_ && phase_ms >= screens_[index].duration_ms) {
+    phase_ms -= screens_[index++].duration_ms;
   }
-  if (cycle_duration_ms == 0) return;
-
-  uint32_t phase_ms = elapsed_ms % cycle_duration_ms;
-  for (const char* screen : preset.matrix_screens) {
-    if (screen == nullptr) break;
-    rr::encodeLatin1(screen, encoded_screen, sizeof(encoded_screen));
-    const WordMetrics metrics = measureWord(display_.get(), encoded_screen);
-    const uint32_t duration_ms = screenDuration(metrics.width);
-    if (phase_ms >= duration_ms) {
-      phase_ms -= duration_ms;
-      continue;
-    }
-
-    int16_t x = 0;
-    if (metrics.width <= kDisplayWidth) {
-      // A single fitting screen is steady. Gaps are only useful as a visual
-      // separator while advancing through multiple screens.
-      if (screen_count > 1 && phase_ms >= kWordHoldMs) return;
-      x = (static_cast<int16_t>(kDisplayWidth) - metrics.width) / 2;
-    } else {
-      const uint32_t scroll_duration_ms =
-          (static_cast<uint32_t>(metrics.width) + kDisplayWidth) *
-          kScrollStepMs;
-      if (phase_ms >= scroll_duration_ms) return;
-      x = static_cast<int16_t>(kDisplayWidth) -
-          static_cast<int16_t>(phase_ms / kScrollStepMs);
-    }
-    drawWord(display_.get(), encoded_screen, x, metrics, color);
-    return;
+  const auto& screen = screens_[index];
+  bool visible = true;
+  int16_t x = 0;
+  if (screen.width <= kDisplayWidth) {
+    visible = screen_count_ == 1 || phase_ms < kWordHoldMs;
+    x = (static_cast<int16_t>(kDisplayWidth) - screen.width) / 2;
+  } else {
+    visible = phase_ms < screen.duration_ms - kWordGapMs;
+    x = static_cast<int16_t>(kDisplayWidth) -
+        static_cast<int16_t>(phase_ms / kScrollStepMs);
   }
+
+  // DMA keeps scanning the last frame. Only submit changed visual content;
+  // timing and animation sampling remain exactly as before.
+  if (have_rendered_frame_ && visible == last_visible_ &&
+      (!visible || (index == last_screen_ && x == last_x_ &&
+                    color == last_color_))) return;
+  display_->clearScreen();
+  if (visible) {
+    const WordMetrics metrics{screen.font, screen.x1, screen.y1,
+                              screen.width, screen.height};
+    drawWord(display_.get(), screen.text.data(), x, metrics, color);
+  }
+  display_->flipDMABuffer();
+  have_rendered_frame_ = true;
+  last_visible_ = visible;
+  last_screen_ = index;
+  last_x_ = x;
+  last_color_ = color;
 }
 
 uint16_t MatrixRenderer::colorWheel(uint8_t position) const {
+  using namespace presentation::matrix;
+  auto blend = [this](RgbColor from, RgbColor to, uint8_t step) {
+    auto channel = [step](uint8_t a, uint8_t b) -> uint8_t {
+      return (static_cast<uint16_t>(a) * (85 - step) +
+              static_cast<uint16_t>(b) * step) / 85;
+    };
+    return display_->color565(channel(from.red, to.red),
+                              channel(from.green, to.green),
+                              channel(from.blue, to.blue));
+  };
   if (position < 85) {
-    return display_->color565(position * 3, 255 - position * 3, 0);
+    return blend(kCycleGreen, kCycleRed, position);
   }
   if (position < 170) {
     position -= 85;
-    return display_->color565(255 - position * 3, 0, position * 3);
+    return blend(kCycleRed, kCycleBlue, position);
   }
   position -= 170;
-  return display_->color565(0, position * 3, 255 - position * 3);
+  return blend(kCycleBlue, kCycleGreen, position);
 }
 
 }  // namespace rr::rear

@@ -20,6 +20,10 @@
 #include "knob_board/panel_driver.h"
 #include "knob_board/panel_init.h"
 
+extern "C" uint32_t rr_lvgl_millis() {
+  return static_cast<uint32_t>(esp_timer_get_time() / 1000);
+}
+
 namespace knob_board {
 namespace {
 
@@ -45,7 +49,6 @@ esp_lcd_panel_handle_t panel = nullptr;
 lv_disp_draw_buf_t draw_buffer{};
 lv_disp_drv_t display_driver{};
 lv_indev_drv_t touch_driver{};
-esp_timer_handle_t tick_timer = nullptr;
 esp_timer_handle_t encoder_timer = nullptr;
 adc_oneshot_unit_handle_t battery_adc = nullptr;
 adc_cali_handle_t battery_adc_calibration = nullptr;
@@ -121,8 +124,6 @@ void touchRead(lv_indev_drv_t*, lv_indev_data_t* data) {
   data->point.y = display_flipped ? kDisplayHeight - 1 - y : y;
   data->state = LV_INDEV_STATE_PRESSED;
 }
-
-void advanceLvgl(void*) { lv_tick_inc(2); }
 
 void sampleEncoder(void*) {
   // This board does not present a conventional quadrature sequence to the
@@ -335,15 +336,7 @@ bool beginDisplay() {
   touch_driver.read_cb = touchRead;
   lv_indev_drv_register(&touch_driver);
 
-  const esp_timer_create_args_t tick_args = {
-      .callback = advanceLvgl,
-      .arg = nullptr,
-      .dispatch_method = ESP_TIMER_TASK,
-      .name = "lvgl_tick",
-      .skip_unhandled_events = true,
-  };
-  return esp_timer_create(&tick_args, &tick_timer) == ESP_OK &&
-         esp_timer_start_periodic(tick_timer, 2000) == ESP_OK;
+  return true;
 }
 
 }  // namespace

@@ -32,6 +32,7 @@ class ControllerUi {
              FeedbackCallback feedback_callback,
              void* callback_context);
   void setCatalog(const CatalogStore* catalog);
+  void setRadioActionsAvailable(bool available);
   void setDisplaySettings(uint8_t controller_percent, uint8_t rear_percent,
                           bool controller_flipped, bool rear_flipped,
                           bool rear_available);
@@ -104,7 +105,9 @@ class ControllerUi {
   uint8_t settings_focus_ = 0;
   bool slider_update_guard_ = false;
   bool flip_update_guard_ = false;
-  uint8_t duration_slot_ = 0;
+  uint16_t duration_preset_id_ = 0;
+  uint32_t duration_catalog_revision_ = 0;
+  bool radio_actions_available_ = false;
   uint8_t duration_choice_ = 0;
   uint32_t status_color_ = 0xFFFFFFFF;
   uint32_t state_received_ms_ = 0;

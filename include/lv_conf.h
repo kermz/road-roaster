@@ -10,7 +10,9 @@
 #define LV_MEM_SIZE (96U * 1024U)
 #define LV_DISP_DEF_REFR_PERIOD 20
 #define LV_INDEV_DEF_READ_PERIOD 20
-#define LV_TICK_CUSTOM 0
+#define LV_TICK_CUSTOM 1
+#define LV_TICK_CUSTOM_INCLUDE "rr_lvgl_clock.h"
+#define LV_TICK_CUSTOM_SYS_TIME_EXPR (rr_lvgl_millis())
 
 #define LV_USE_LOG 0
 #define LV_USE_ASSERT_NULL 1
